@@ -4,15 +4,15 @@
     var d=document;
     // desktop positions
     var DESK=[
-      {l:'72%',t:'18%',sz:380,b:0,c:'#5CDDC6',dp:0.35},
-      {l:'30%',t:'58%',sz:240,b:3,c:'#C0B3FA',dp:0.2 },
-      {l:'58%',t:'82%',sz:170,b:7,c:'#295c66',dp:0.1 }
+      {l:'72%',t:'18%',sz:380,b:0,c:'#5CDDC6',dp:0.06},
+      {l:'30%',t:'58%',sz:240,b:3,c:'#C0B3FA',dp:0.045},
+      {l:'58%',t:'82%',sz:170,b:7,c:'#295c66',dp:0.03}
     ];
     // mobile / tablet (<=991): spheres sit half off-screen, navy slightly off right
     var MOB=[
-      {l:'100%',t:'12%',sz:300,b:0,c:'#5CDDC6',dp:0.35}, // cyan: half off the right
-      {l:'0%',  t:'56%',sz:240,b:3,c:'#C0B3FA',dp:0.2 }, // lilac: half off the left
-      {l:'96%', t:'82%',sz:150,b:7,c:'#295c66',dp:0.1 }  // navy: slightly off the right
+      {l:'100%',t:'12%',sz:300,b:0,c:'#5CDDC6',dp:0.06}, // cyan: half off the right
+      {l:'0%',  t:'56%',sz:240,b:3,c:'#C0B3FA',dp:0.045}, // lilac: half off the left
+      {l:'96%', t:'82%',sz:150,b:7,c:'#295c66',dp:0.03}  // navy: slightly off the right
     ];
     function shade(hex,amt){
       var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
@@ -29,7 +29,9 @@
     var nodes=[],scrollY=0,ticking=false,current=null;
     function apply(){
       for(var i=0;i<nodes.length;i++){
-        nodes[i].w.style.transform='translate(-50%, calc(-50% + '+(-scrollY*nodes[i].dp)+'px))';
+        var off=-scrollY*nodes[i].dp;
+        if(off<-70)off=-70; else if(off>70)off=70;   // clamp: stay on the page
+        nodes[i].w.style.transform='translate(-50%, calc(-50% + '+off+'px))';
       }
       ticking=false;
     }
