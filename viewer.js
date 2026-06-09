@@ -292,6 +292,44 @@ function init(app) {
   });
   window.addEventListener('pointerup', () => { dragging = false; });
 
+  // ---------- zoom slider (vertical, pinned to right edge) ----------
+  const ZOOM_MIN = 4.2, ZOOM_MAX = 10.0;
+  let camDist = THREE.MathUtils.clamp(camera.position.distanceTo(target), ZOOM_MIN, ZOOM_MAX);
+  const _zoomOff = new THREE.Vector3();
+  const zStyle = document.createElement('style');
+  zStyle.textContent =
+    '.tx-zoom{position:absolute;right:14px;top:50%;transform:translateY(-50%);z-index:12;width:30px;height:170px;display:flex;align-items:center;justify-content:center;}' +
+    '.tx-zoom-track{position:relative;width:6px;height:100%;border-radius:999px;background:rgba(0,0,0,0.35);box-shadow:inset 0 1px 3px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.10);cursor:pointer;}' +
+    '.tx-zoom-fill{position:absolute;left:0;right:0;top:0;border-radius:999px;background:linear-gradient(180deg,rgba(92,221,198,0.55),rgba(92,221,198,0.12));}' +
+    '.tx-zoom-thumb{position:absolute;left:50%;width:18px;height:18px;margin-left:-9px;margin-top:-9px;border-radius:50%;cursor:grab;background-image:radial-gradient(circle at 50% 35%,rgba(255,255,255,0.95),rgba(235,247,244,0.7) 45%,rgba(200,225,221,0.85) 75%);border:1px solid rgba(255,255,255,0.5);box-shadow:0 2px 6px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.85);touch-action:none;}' +
+    '.tx-zoom-thumb:active{cursor:grabbing;}';
+  document.head.appendChild(zStyle);
+  const zoomEl = document.createElement('div');
+  zoomEl.className = 'tx-zoom';
+  zoomEl.innerHTML = '<div class="tx-zoom-track"><div class="tx-zoom-fill"></div><div class="tx-zoom-thumb"></div></div>';
+  app.appendChild(zoomEl);
+  const zTrack = zoomEl.querySelector('.tx-zoom-track');
+  const zFill = zoomEl.querySelector('.tx-zoom-fill');
+  const zThumb = zoomEl.querySelector('.tx-zoom-thumb');
+  function zoomRender() {
+    const t = (camDist - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN);   // 0 = top (in), 1 = bottom (out)
+    zThumb.style.top = (t * 100) + '%';
+    zFill.style.height = (t * 100) + '%';
+  }
+  function zoomFromY(clientY) {
+    const r = zTrack.getBoundingClientRect();
+    let t = (clientY - r.top) / r.height;
+    t = Math.min(1, Math.max(0, t));
+    camDist = ZOOM_MIN + t * (ZOOM_MAX - ZOOM_MIN);
+    zoomRender();
+  }
+  let zDrag = false;
+  zThumb.addEventListener('pointerdown', (e) => { zDrag = true; e.stopPropagation(); });
+  zTrack.addEventListener('pointerdown', (e) => { zDrag = true; zoomFromY(e.clientY); e.stopPropagation(); });
+  window.addEventListener('pointermove', (e) => { if (zDrag) zoomFromY(e.clientY); });
+  window.addEventListener('pointerup', () => { zDrag = false; });
+  zoomRender();
+
   // ---------- simulate ----------
   const tmpForce = new THREE.Vector3();
   const airForce = new THREE.Vector3();
@@ -350,8 +388,10 @@ function init(app) {
       const a = AUTO_ROT, px = camera.position.x, pz = camera.position.z;
       camera.position.x = px * Math.cos(a) - pz * Math.sin(a);
       camera.position.z = px * Math.sin(a) + pz * Math.cos(a);
-      camera.lookAt(target);
     }
+    _zoomOff.copy(camera.position).sub(target).setLength(camDist);   // apply slider zoom
+    camera.position.copy(target).add(_zoomOff);
+    camera.lookAt(target);
     renderer.render(scene, camera);
   }
   animate(0);
