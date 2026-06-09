@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Textyl — cloth drape test</title>
+<style>
+  :root { --bg:#10353C; --teal:#5CDDC6; }
+  html,body { margin:0; height:100%; background:var(--bg); overflow:hidden;
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif; color:#cfe3df; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; touch-action:none; }
+  #ui { position:fixed; left:16px; top:16px; z-index:10; max-width:280px;
+    font-size:13px; line-height:1.5; }
+  #ui h1 { font-size:14px; margin:0 0 6px; color:var(--teal); letter-spacing:.04em; text-transform:uppercase; }
+  #ui p { margin:0 0 12px; color:#9bb3b0; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  button { cursor:pointer; border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.28); color:#ecf3f1; padding:7px 12px; border-radius:999px;
+    font-size:12px; box-shadow:inset 0 1px 0 rgba(255,255,255,.12); }
+  button:hover { background:rgba(92,221,198,.18); }
+  button.on { background:rgba(92,221,198,.30); border-color:var(--teal); }
+  #hint { position:fixed; bottom:14px; left:0; right:0; text-align:center;
+    font-size:12px; color:#7f9a97; z-index:10; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="ui">
+  <h1>Cloth drape test</h1>
+  <p>Drag to spin it &mdash; the cloth trails like there's air drag. Scroll to zoom.</p>
+  <div class="row">
+    <button id="reset">Reset cloth</button>
+    <button id="pin" class="on">Pin centre: on</button>
+    <button id="wind" class="on">Wind: on</button>
+    <button id="spin" class="on">Auto-rotate cam: on</button>
+  </div>
+  <div class="row" id="fabrics" style="margin-top:8px"></div>
+</div>
+<div id="hint">Verlet cloth · sphere collision · drag to spin</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------- config ----------
+const X_SEGS = 36, Y_SEGS = 36;        // cloth resolution (36x36 = finer, more realistic drape)
+const REST = 0.16;                      // rest distance -> cloth ~5.8 wide (REST*SEGS), fitted cap
+const MASS = 0.1;
+const GRAVITY = new THREE.Vector3(0, -4.0, 0).multiplyScalar(MASS);
+const FRICTION = 0.75;                    // contact friction: 0 = slippery, 1 = sticky
+const TIMESTEP = 18 / 1000;
+const TIMESTEP_SQ = TIMESTEP * TIMESTEP;
+const DRAG = 0.06;                       // velocity retention = 1 - DRAG (more damping = calmer)
+const CONSTRAINT_ITER = 18;
+const SUBSTEPS = 3;
+const SPHERE_R = 1.5;
+const SPHERE_C = new THREE.Vector3(0, 0, 0);
+const SKIN_OFFSET = 0.1;                 // how far the cloth floats off the sphere surface
+const PIN_LIFT = 0.1;                    // pinned cap height above surface (>= SKIN_OFFSET so it sits on the shell)
+const BEND = true;                       // bend springs on
+const BEND_STIFF = 0.25;                 // bend strength: 1 = stiff, lower = softer (0.5 -> 0.25)
+const FLOOR_Y = -2.2;
+const START_Y = 2.0;                     // cloth release height above sphere
+// --- drag-to-spin + air drag ---
+const SPIN_SENS = 0.0002;                // pointer pixels -> angular velocity (halved)
+const SPIN_DECAY = 0.94;                 // spin momentum decay per frame
+const SPIN_MAX = 0.15;                   // cap on spin velocity (fast flicks cannot blow up the sim)
+const AUTO_ROT = 0.000075;               // auto-rotate camera speed (3% of original 0.0025)
+const AIR_SPIN = 0.6;                    // how strongly the spinning air drags the skirt
+const WIND_SCALE = 0.05;                 // ambient wind strength (5%)
+const SMOOTH_ITERS = 2;                  // render-only smoothing passes (like a Blender smooth/subsurf)
+const SMOOTH_LAMBDA = 0.5;               // smoothing strength per pass (0 = off)
+
+// ---------- renderer / scene / camera ----------
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x10353c);
+scene.fog = new THREE.Fog(0x10353c, 8, 18);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.7, 7.4);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = false;
+controls.enableRotate = false;           // left-drag now spins the object instead
+controls.minDistance = 3;
+controls.maxDistance = 12;
+controls.target.set(0, 0, 0);
+
+// ---------- lights: three-point ----------
+// whisper of neutral ambient so shadows aren't pure black (PBR fill floor)
+scene.add(new THREE.HemisphereLight(0xdfe7e4, 0x0a2025, 0.18));
+
+// KEY (100%) — front-left, 45deg up; the main light, casts the shadow
+const key = new THREE.DirectionalLight(0xffffff, 1.8);
+key.position.set(-4.5, 5, 4.5);
+key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024);
+key.shadow.camera.near = 1; key.shadow.camera.far = 25;
+key.shadow.camera.left = -6; key.shadow.camera.right = 6;
+key.shadow.camera.top = 6; key.shadow.camera.bottom = -6;
+key.shadow.bias = -0.0004;
+key.shadow.normalBias = 0.04;
+scene.add(key);
+
+// FILL (~50%) — front-right, soft, no shadow; opens up the key's shadows
+const fill = new THREE.DirectionalLight(0xffffff, 0.45);
+fill.position.set(5, 2.5, 4);
+scene.add(fill);
+
+// BACK / rim (~20%) — behind + above, slight teal for edge separation
+const back = new THREE.DirectionalLight(0x3fe3ee, 0.7);   // brighter, more cyan
+back.position.set(-1.5, 2, -6);   // lowered
+scene.add(back);
+
+// ---------- sphere ----------
+const sphere = new THREE.Mesh(
+  new THREE.SphereGeometry(SPHERE_R, 48, 32),
+  new THREE.MeshStandardMaterial({ color: 0x214a52, roughness: 0.85, metalness: 0.0 })
+);
+sphere.castShadow = true; sphere.receiveShadow = true;
+scene.add(sphere);
+
+// ---------- floor ----------
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(9, 48).rotateX(-Math.PI / 2),
+  new THREE.MeshStandardMaterial({ color: 0x0c2a30, roughness: 1.0 })
+);
+floor.position.y = FLOOR_Y;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// ---------- cloth model (Verlet) ----------
+function startPos(u, v) {
+  return new THREE.Vector3((u - X_SEGS / 2) * REST, START_Y, (v - Y_SEGS / 2) * REST);
+}
+class Particle {
+  constructor(u, v) {
+    this.position = startPos(u, v);
+    this.previous = this.position.clone();
+    this.a = new THREE.Vector3();
+    this.pinned = false;
+  }
+  addForce(f) { this.a.addScaledVector(f, 1 / MASS); }
+  integrate() {
+    if (this.pinned) { this.a.set(0, 0, 0); return; }
+    const cur = this.position;
+    const next = cur.clone()
+      .addScaledVector(cur.clone().sub(this.previous), 1 - DRAG)
+      .addScaledVector(this.a, TIMESTEP_SQ);
+    this.previous.copy(cur);
+    this.position.copy(next);
+    this.a.set(0, 0, 0);
+  }
+}
+
+const particles = [];
+const constraints = [];
+const idx = (u, v) => u + v * (X_SEGS + 1);
+for (let v = 0; v <= Y_SEGS; v++)
+  for (let u = 0; u <= X_SEGS; u++)
+    particles.push(new Particle(u, v));
+
+// ---------- pin: anchor a small cap to the sphere top; the cap rotates with the spin ----------
+let pinOn = true;
+const PIN_RADIUS = 1;                     // 1 => 3x3 patch
+const pinnedCap = [];                     // { part, base } seated positions
+function applyPin() {
+  const cu = X_SEGS >> 1, cv = Y_SEGS >> 1;
+  for (const part of particles) part.pinned = false;
+  pinnedCap.length = 0;
+  if (!pinOn) return;
+  const surf = SPHERE_R + PIN_LIFT;
+  for (let dv = -PIN_RADIUS; dv <= PIN_RADIUS; dv++)
+    for (let du = -PIN_RADIUS; du <= PIN_RADIUS; du++) {
+      const part = particles[idx(cu + du, cv + dv)];
+      const x = du * REST, z = dv * REST;
+      const y = Math.sqrt(Math.max(0, surf * surf - x * x - z * z)); // seat on sphere top
+      part.pinned = true;
+      const base = new THREE.Vector3(x, y, z);
+      part.position.copy(base);
+      part.previous.copy(base);
+      pinnedCap.push({ part, base });
+    }
+}
+function updatePinSpin(angle) {
+  if (!pinOn) return;
+  const c = Math.cos(angle), s = Math.sin(angle);
+  for (const { part, base } of pinnedCap) {
+    part.position.set(base.x * c - base.z * s, base.y, base.x * s + base.z * c);
+    part.previous.copy(part.position);
+  }
+}
+
+function addConstraint(a, b, stiff = 1) {
+  const dist = particles[a].position.distanceTo(particles[b].position);
+  const c = [particles[a], particles[b], dist, stiff];
+  constraints.push(c);
+  return c;
+}
+const bendList = [];   // bend constraints, so per-fabric drape can retune them live
+for (let v = 0; v <= Y_SEGS; v++) {
+  for (let u = 0; u <= X_SEGS; u++) {
+    if (u < X_SEGS) addConstraint(idx(u, v), idx(u + 1, v));     // structural
+    if (v < Y_SEGS) addConstraint(idx(u, v), idx(u, v + 1));
+    if (u < X_SEGS && v < Y_SEGS) {                              // shear
+      addConstraint(idx(u, v), idx(u + 1, v + 1));
+      addConstraint(idx(u + 1, v), idx(u, v + 1));
+    }
+    if (BEND && u < X_SEGS - 1) bendList.push(addConstraint(idx(u, v), idx(u + 2, v), BEND_STIFF)); // bend
+    if (BEND && v < Y_SEGS - 1) bendList.push(addConstraint(idx(u, v), idx(u, v + 2), BEND_STIFF));
+  }
+}
+
+applyPin();   // seat the cap AFTER rest lengths are measured (prevents launch on frame 1)
+
+const diff = new THREE.Vector3();
+function satisfy(a, b, dist, stiff) {
+  diff.subVectors(b.position, a.position);
+  const len = diff.length();
+  if (len === 0) return;
+  const corr = diff.multiplyScalar((1 - dist / len) * stiff);
+  const aP = a.pinned, bP = b.pinned;
+  if (aP && bP) return;
+  if (aP) { b.position.sub(corr); }
+  else if (bP) { a.position.add(corr); }
+  else { a.position.addScaledVector(corr, 0.5); b.position.addScaledVector(corr, -0.5); }
+}
+
+// ---------- cloth mesh ----------
+const clothGeo = new THREE.PlaneGeometry(1, 1, X_SEGS, Y_SEGS);
+const clothMat = new THREE.MeshStandardMaterial({
+  color: 0x2f5d8f, roughness: 0.75, metalness: 0.0, side: THREE.DoubleSide,
+  flatShading: false,                     // smooth shading across the denser mesh
+});
+const clothMesh = new THREE.Mesh(clothGeo, clothMat);
+clothMesh.castShadow = true; clothMesh.receiveShadow = false;   // avoid self-shadow acne (the fine striping)
+scene.add(clothMesh);
+const posAttr = clothGeo.attributes.position;
+const smoothBuf = new Float32Array(posAttr.array.length);
+const normAttr = clothGeo.attributes.normal;
+const _du = new THREE.Vector3(), _dv = new THREE.Vector3(), _nrm = new THREE.Vector3();
+
+// Normals from the grid (central differences), NOT from the triangulation.
+// Kills the diagonal/herringbone striping that computeVertexNormals produces on a folded quad mesh.
+function computeGridNormals() {
+  const a = posAttr.array;
+  for (let v = 0; v <= Y_SEGS; v++)
+    for (let u = 0; u <= X_SEGS; u++) {
+      const iL = idx(Math.max(u - 1, 0), v) * 3;
+      const iR = idx(Math.min(u + 1, X_SEGS), v) * 3;
+      const iD = idx(u, Math.max(v - 1, 0)) * 3;
+      const iU = idx(u, Math.min(v + 1, Y_SEGS)) * 3;
+      _du.set(a[iR] - a[iL], a[iR + 1] - a[iL + 1], a[iR + 2] - a[iL + 2]);
+      _dv.set(a[iU] - a[iD], a[iU + 1] - a[iD + 1], a[iU + 2] - a[iD + 2]);
+      _nrm.crossVectors(_dv, _du).normalize();
+      normAttr.setXYZ(idx(u, v), _nrm.x, _nrm.y, _nrm.z);
+    }
+  normAttr.needsUpdate = true;
+}
+
+function smoothPass() {
+  const arr = posAttr.array;
+  smoothBuf.set(arr);
+  for (let v = 0; v <= Y_SEGS; v++)
+    for (let u = 0; u <= X_SEGS; u++) {
+      const i = idx(u, v) * 3;
+      let sx = 0, sy = 0, sz = 0, n = 0;
+      if (u > 0)      { const j = idx(u - 1, v) * 3; sx += smoothBuf[j]; sy += smoothBuf[j + 1]; sz += smoothBuf[j + 2]; n++; }
+      if (u < X_SEGS) { const j = idx(u + 1, v) * 3; sx += smoothBuf[j]; sy += smoothBuf[j + 1]; sz += smoothBuf[j + 2]; n++; }
+      if (v > 0)      { const j = idx(u, v - 1) * 3; sx += smoothBuf[j]; sy += smoothBuf[j + 1]; sz += smoothBuf[j + 2]; n++; }
+      if (v < Y_SEGS) { const j = idx(u, v + 1) * 3; sx += smoothBuf[j]; sy += smoothBuf[j + 1]; sz += smoothBuf[j + 2]; n++; }
+      if (!n) continue;
+      const inv = 1 / n;
+      arr[i]     += (sx * inv - smoothBuf[i])     * SMOOTH_LAMBDA;
+      arr[i + 1] += (sy * inv - smoothBuf[i + 1]) * SMOOTH_LAMBDA;
+      arr[i + 2] += (sz * inv - smoothBuf[i + 2]) * SMOOTH_LAMBDA;
+    }
+}
+function syncMesh() {
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i].position;
+    posAttr.setXYZ(i, p.x, p.y, p.z);
+  }
+  for (let it = 0; it < SMOOTH_ITERS; it++) smoothPass();   // visual smoothing only; sim untouched
+  posAttr.needsUpdate = true;
+  computeGridNormals();   // grid-based normals (no triangulation striping)
+  clothGeo.computeBoundingSphere();
+}
+
+// ---------- interaction: drag to spin (cloth trails via air drag) ----------
+let spinVel = 0, spinAngle = 0, dragging = false, lastX = 0;
+renderer.domElement.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; });
+window.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  spinVel -= (e.clientX - lastX) * SPIN_SENS;   // drag direction follows the pointer
+  spinVel = Math.max(-SPIN_MAX, Math.min(SPIN_MAX, spinVel));   // clamp so a hard flick can't break it
+  lastX = e.clientX;
+});
+window.addEventListener('pointerup', () => { dragging = false; });
+
+// ---------- UI ----------
+let windOn = true, spinOn = true;
+const windForce = new THREE.Vector3();
+document.getElementById('reset').onclick = () => {
+  for (let v = 0; v <= Y_SEGS; v++)
+    for (let u = 0; u <= X_SEGS; u++) {
+      const p = particles[idx(u, v)];
+      p.position.copy(startPos(u, v));
+      p.previous.copy(p.position);
+      p.a.set(0, 0, 0);
+    }
+  spinVel = 0; spinAngle = 0;
+  applyPin();
+};
+const windBtn = document.getElementById('wind');
+windBtn.onclick = () => { windOn = !windOn; windBtn.textContent = 'Wind: ' + (windOn ? 'on' : 'off'); windBtn.classList.toggle('on', windOn); };
+const spinBtn = document.getElementById('spin');
+spinBtn.onclick = () => { spinOn = !spinOn; spinBtn.textContent = 'Auto-rotate cam: ' + (spinOn ? 'on' : 'off'); spinBtn.classList.toggle('on', spinOn); };
+const pinBtn = document.getElementById('pin');
+pinBtn.onclick = () => { pinOn = !pinOn; applyPin(); pinBtn.textContent = 'Pin centre: ' + (pinOn ? 'on' : 'off'); pinBtn.classList.toggle('on', pinOn); };
+
+// ---------- fabric textures (Webflow CDN) ----------
+const TILES = 4;                          // how many times the swatch repeats across the cloth
+const CDN = 'https://cdn.prod.website-files.com/6a0979ff745bb701c7a098de/';
+const FABRICS = [
+  { name: 'Denim',       file: '6a281f964dc2ec4183c3c4d2_denim_0039.png',       bend: 0.25 },
+  { name: 'Twill',       file: '6a282069fae9b8afd8fbec24_twill_0890.png',       bend: 0.10 },
+  { name: 'Plain',       file: '6a28202577b9144a53e8da4b_plain_0902.png',       bend: 0.08 },
+  { name: 'Houndstooth', file: '6a28200e12e91bf04af2691c_houndstooth_1594.png', bend: 0.08 },
+  { name: 'Gingham',     file: '6a281fe88b34465293d32c12_gingham_1112.png',     bend: 0.08 },
+  { name: 'Madras',      file: '6a281fcf86f15756a04e71bd_madras_1911.png',      bend: 0.25 },
+];
+const texLoader = new THREE.TextureLoader();
+texLoader.setCrossOrigin('anonymous');
+const texCache = {};
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+function setSprings(f) {
+  for (const c of bendList) c[3] = f.bend;   // per-fabric drape: lower bend = drapier
+}
+function configureTex(tex) {
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(TILES, TILES);
+  tex.anisotropy = maxAniso;
+}
+function setFabric(f, btn) {
+  setSprings(f);
+  document.querySelectorAll('#fabrics button').forEach((b) => b.classList.remove('on'));
+  if (btn) btn.classList.add('on');
+  const cached = texCache[f.file];
+  if (cached) {
+    clothMat.map = cached; clothMat.color.set(0xffffff); clothMat.needsUpdate = true;
+    return;
+  }
+  texLoader.load(CDN + f.file, (tex) => {   // assign map ONLY after the image loads -> no brown flash
+    configureTex(tex);
+    texCache[f.file] = tex;
+    clothMat.map = tex; clothMat.color.set(0xffffff); clothMat.needsUpdate = true;
+  });
+}
+const fabricsRow = document.getElementById('fabrics');
+FABRICS.forEach((f) => {
+  const b = document.createElement('button');
+  b.textContent = f.name;
+  b.onclick = () => setFabric(f, b);
+  fabricsRow.appendChild(b);
+});
+setFabric(FABRICS[0], fabricsRow.firstChild);   // default to Denim
+
+// ---------- simulation step ----------
+const tmpForce = new THREE.Vector3();
+const airForce = new THREE.Vector3();
+function simulate(time) {
+  for (let s = 0; s < SUBSTEPS; s++) {
+    for (const p of particles) p.addForce(GRAVITY);
+    if (windOn) {
+      const w = Math.sin(time / 700) * 6 + 4;
+      windForce.set(w, Math.sin(time / 500) * 1.5, Math.cos(time / 600) * 5).multiplyScalar(MASS * WIND_SCALE);
+      for (const p of particles) p.addForce(windForce);
+    }
+    if (Math.abs(spinVel) > 1e-5) {       // spinning air drags the skirt tangentially
+      for (const p of particles) {
+        if (p.pinned) continue;
+        airForce.set(-p.position.z, 0, p.position.x).multiplyScalar(AIR_SPIN * spinVel);
+        p.addForce(airForce);
+      }
+    }
+    for (const p of particles) p.integrate();
+    for (let i = 0; i < CONSTRAINT_ITER; i++)
+      for (const c of constraints) satisfy(c[0], c[1], c[2], c[3]);
+    for (const p of particles) {
+      // sphere: project to surface, kill inward velocity (no fling), then tangential friction
+      tmpForce.subVectors(p.position, SPHERE_C);
+      const d = tmpForce.length();
+      const surf = SPHERE_R + SKIN_OFFSET;
+      if (d < surf && d > 1e-6) {
+        const n = tmpForce.multiplyScalar(1 / d);
+        p.position.copy(SPHERE_C).addScaledVector(n, surf);
+        const prev = p.previous.clone().sub(SPHERE_C);
+        const pd = prev.length();
+        if (pd < surf && pd > 1e-6) p.previous.copy(SPHERE_C).addScaledVector(prev.multiplyScalar(1 / pd), surf);
+        p.previous.lerp(p.position, FRICTION);
+      }
+      if (p.position.y < FLOOR_Y + SKIN_OFFSET) {
+        p.position.y = FLOOR_Y + SKIN_OFFSET;
+        p.previous.lerp(p.position, FRICTION);
+      }
+    }
+  }
+}
+
+// ---------- loop ----------
+function animate(t) {
+  requestAnimationFrame(animate);
+  spinAngle += spinVel;
+  spinVel *= SPIN_DECAY;
+  updatePinSpin(spinAngle);
+  sphere.rotation.y = spinAngle;
+  simulate(t);
+  syncMesh();
+  if (spinOn) {
+    const a = AUTO_ROT, px = camera.position.x, pz = camera.position.z;
+    camera.position.x = px * Math.cos(a) - pz * Math.sin(a);
+    camera.position.z = px * Math.sin(a) + pz * Math.cos(a);
+    camera.lookAt(controls.target);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate(0);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
