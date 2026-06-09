@@ -5,7 +5,7 @@
     // desktop positions
     var DESK=[
       {l:'72%',t:'18%',sz:380,b:0,c:'#5CDDC6',dp:0.35},
-      {l:'18%',t:'58%',sz:240,b:3,c:'#C0B3FA',dp:0.2 },
+      {l:'30%',t:'58%',sz:240,b:3,c:'#C0B3FA',dp:0.2 },
       {l:'58%',t:'82%',sz:170,b:7,c:'#295c66',dp:0.1 }
     ];
     // mobile / tablet (<=991): spheres sit half off-screen, navy slightly off right

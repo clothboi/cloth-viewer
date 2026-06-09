@@ -44,7 +44,8 @@
     // horizontal lilac drops: every other row, alternating L/R direction, ~half the vertical density
     htrail=Math.max(8,Math.round(cols*0.4));
     hdrops=[];var hi=0;
-    for(var rr=1;rr<rows;rr+=2){
+    for(var rr=1;rr<rows;rr++){
+      if(rr%5>=3)continue;          // ~60% of rows (was 50% every-other) -> +20% density
       var dir=(hi%2===0)?1:-1;
       hdrops.push({row:rr,dir:dir,x:dir>0?-Math.random()*cols:cols+Math.random()*cols,sp:0.015+Math.random()*0.03});
       hi++;
@@ -62,7 +63,7 @@
     var baseFont='bold '+fs+'px ui-monospace,"Courier New",monospace';
     x.font=baseFont;
     var topFadeY=H/3;
-    x.globalCompositeOperation='lighter';   // colours add/mix where paths cross
+    // (additive blend removed: it brightened the whole matrix column vs the page bg)
 
     // vertical green/cyan
     for(var i=0;i<cols;i++){
@@ -97,10 +98,10 @@
           if(col<0||col>=cols)continue;
           if(hd.row===txRow && col>=txStartCol && col<txStartCol+6)continue;
           var ch2=grid[col][((hd.row%glen)+glen)%glen];
-          var a2=hk===0?0.5:Math.pow(1-hk/htrail,1.4)*0.5;
+          var a2=hk===0?0.62:Math.pow(1-hk/htrail,1.4)*0.62;
           if(yy<topFadeY)a2*=(0.35+0.65*(yy/topFadeY));
           if(a2<0.01)continue;
-          x.fillStyle=hk===0?'rgba(220,212,255,'+a2.toFixed(3)+')':'rgba(192,179,250,'+a2.toFixed(3)+')';
+          x.fillStyle=hk===0?'rgba(214,196,255,'+a2.toFixed(3)+')':'rgba(180,150,255,'+a2.toFixed(3)+')';
           x.fillText(ch2,col*fs,yy);
         }
       }
