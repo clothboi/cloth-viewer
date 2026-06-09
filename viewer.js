@@ -1,7 +1,7 @@
 // Textyl cloth viewer — embeddable build.
 // Mounts into #tx-viewer-canvas, transparent background, no dev UI.
 // Fabric swap is driven by any element on the page with a [data-fabric] attribute.
-import * as THREE from 'three';
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
 const MOUNT_ID = 'tx-viewer-canvas';
 const app = document.getElementById(MOUNT_ID);
