@@ -52,8 +52,8 @@ function init(app) {
   scene.fog = new THREE.Fog(0x10353c, 9, 20);
 
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-  camera.position.set(0, 1.7, 7.4);
-  const target = new THREE.Vector3(0, 0, 0);
+  camera.position.set(0, 1.3, 6.6);
+  const target = new THREE.Vector3(0, 0.25, 0);
   camera.lookAt(target);
 
   function size() {
@@ -196,6 +196,7 @@ function init(app) {
   const clothGeo = new THREE.PlaneGeometry(1, 1, X_SEGS, Y_SEGS);
   const clothMat = new THREE.MeshStandardMaterial({
     color: 0x2f5d8f, roughness: 0.75, metalness: 0.0, side: THREE.DoubleSide, flatShading: false,
+    transparent: true, alphaTest: 0.5,   // respect the texture alpha channel
   });
   const clothMesh = new THREE.Mesh(clothGeo, clothMat);
   clothMesh.castShadow = true; clothMesh.receiveShadow = false;
