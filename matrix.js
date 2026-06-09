@@ -6,9 +6,6 @@
   var c=document.createElement('canvas');
   c.style.cssText='display:block;width:100%;height:100%;filter:blur(0.6px)';
   o.appendChild(c);
-  var vg=document.createElement('div');
-  vg.style.cssText='position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center, transparent 45%, #10353C 100%)';
-  o.appendChild(vg);
   (document.body||document.documentElement).appendChild(o);
 
   var x=c.getContext('2d');
@@ -68,6 +65,7 @@
     // vertical green/cyan
     for(var i=0;i<cols;i++){
       var xp=i*fs;
+      var ef=Math.min(i,cols-1-i)/5; if(ef>1)ef=1;   // fade out over 5 edge columns each side
       for(var d=0;d<DROPS_PER_COL;d++){
         var hy=drops[i][d];
         for(var k=0;k<trail;k++){
@@ -79,6 +77,7 @@
           var ch=grid[i][((row%glen)+glen)%glen];
           var a=k===0?0.55:Math.pow(1-k/trail,1.4)*0.55;
           if(y<topFadeY)a*=(0.35+0.65*(y/topFadeY));
+          a*=ef;
           if(a<0.01)continue;
           x.fillStyle=k===0?'rgba(180,235,222,'+a.toFixed(3)+')':'rgba(92,221,198,'+a.toFixed(3)+')';
           x.fillText(ch,xp,y);
@@ -100,6 +99,8 @@
           var ch2=grid[col][((hd.row%glen)+glen)%glen];
           var a2=hk===0?0.62:Math.pow(1-hk/htrail,1.4)*0.62;
           if(yy<topFadeY)a2*=(0.35+0.65*(yy/topFadeY));
+          var ef2=Math.min(col,cols-1-col)/5; if(ef2>1)ef2=1;
+          a2*=ef2;
           if(a2<0.01)continue;
           x.fillStyle=hk===0?'rgba(214,196,255,'+a2.toFixed(3)+')':'rgba(180,150,255,'+a2.toFixed(3)+')';
           x.fillText(ch2,col*fs,yy);
