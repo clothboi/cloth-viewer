@@ -12,6 +12,7 @@
     var ctx = c.getContext('2d');
     var visible = true;
     if ('IntersectionObserver' in window) {
+      visible = false;
       new IntersectionObserver(function (e) { visible = e[0].isIntersecting; }).observe(c);
     }
 
@@ -829,8 +830,15 @@ function scene3(t, alpha) {
 }
 
 // ---------- main loop ----------
+var animT = 0, lastMs = null;
 function frame(ms) {
-  if (!visible) { requestAnimationFrame(frame); return; }
+  // the animation clock only advances while the canvas is in view,
+  // so it starts from the beginning on first sight and pauses off-screen
+  if (!visible) { lastMs = null; requestAnimationFrame(frame); return; }
+  if (lastMs === null) lastMs = ms;
+  animT += ms - lastMs;
+  lastMs = ms;
+  ms = animT;
   const t = (ms / 1000) % TOTAL;
   ctx.clearRect(0, 0, G*S, G*S);   // transparent
   // scenes render fully opaque; the loop fade is applied to the finished frame
