@@ -501,8 +501,7 @@ function drawDrain(dtF) {
 // real shirt + mannequin model (Joshua's export), swatches target the FABRIC material
 const garment = new THREE.Group();
 let torsoMat = new THREE.MeshStandardMaterial({ color: 0xb9c4c2, roughness: 0.8 });
-const _gl = new GLTFLoader();
-function parseGlb(url) { return _gl.loadAsync(url); }
+function parseGlb(url) { return new GLTFLoader().loadAsync(url); }
 Promise.all([parseGlb(ASSET + 'shirt.glb'), parseGlb(ASSET + 'mannequin.glb')]).then(([shirtG, mannG]) => {
   const root = new THREE.Group();
   root.add(mannG.scene, shirtG.scene);
