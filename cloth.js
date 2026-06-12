@@ -79,6 +79,7 @@
           var v=makeVideo(BASE+s.v+'.webm');
           v.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%';
           w.appendChild(v);
+          v.addEventListener('playing',function(){poster.style.display='none';});
           v.play&&v.play().catch(function(){v.remove();});
         }else{
           var sv=makeVideo(BASE+s.v+'-stack.mp4');
@@ -90,8 +91,12 @@
           if(draw){
             var playing=false,inView=true;
             new IntersectionObserver(function(e){inView=e[0].isIntersecting;}).observe(cv);
+            var first=true;
             function loop(){
-              if(playing&&inView)draw();
+              if(playing&&inView){
+                draw();
+                if(first){first=false;poster.style.display='none';}
+              }
               requestAnimationFrame(loop);
             }
             sv.play&&sv.play().then(function(){playing=true;}).catch(function(){});
