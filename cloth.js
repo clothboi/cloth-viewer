@@ -20,7 +20,12 @@
       {l:'96%', t:'82%',sz:300,b:4,v:'cloth-far'}
     ];
     var probe=d.createElement('video');
-    var hasAlpha=!!probe.canPlayType&&probe.canPlayType('video/webm; codecs="vp9"')!=='';
+    // iOS 17.4+ claims VP9 webm support but drops the alpha channel (black boxes),
+    // and every iOS browser is WebKit underneath. Force the stacked path on Apple.
+    var ua=navigator.userAgent;
+    var isIOS=/iP(hone|ad|od)/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+    var isSafari=/^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(ua);
+    var hasAlpha=!isIOS&&!isSafari&&!!probe.canPlayType&&probe.canPlayType('video/webm; codecs="vp9"')!=='';
 
     var box=d.createElement('div');
     box.id='tx-cloth';
