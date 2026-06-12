@@ -49,7 +49,16 @@ const STEPS = {
     meta: 'Tileable base colour, normal and height maps. Seconds, not scanners.'
   }
 };
+// external step text: any [data-tx-step] elements on the page take over from
+// the built-in overlay; the script just flips .tx-step-on as the demo advances
+const extSteps = document.querySelectorAll('[data-tx-step]');
+if (extSteps.length) head.style.display = 'none';
 function setStep(n) {
+  host.dispatchEvent(new CustomEvent('txscan:step', { detail: { step: n }, bubbles: true }));
+  if (extSteps.length) {
+    extSteps.forEach((el) => el.classList.toggle('tx-step-on', Number(el.dataset.txStep) === n));
+    return;
+  }
   const s = STEPS[n];
   head.classList.add('out');
   setTimeout(() => {
@@ -60,6 +69,7 @@ function setStep(n) {
     head.classList.remove('out');
   }, 380);
 }
+if (extSteps.length) setStep(1);
 
 const canvas = document.getElementById('txs-c');
 const hint = { textContent: '' };   // bottom hint removed: header carries the copy
