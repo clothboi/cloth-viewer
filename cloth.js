@@ -9,14 +9,14 @@
     var d=document;
     var BASE='https://clothboi.github.io/cloth-viewer/';
     var DESK=[
-      {l:'72%',t:'18%',sz:380,b:0,v:'cloth-near',dp:0.06},
-      {l:'30%',t:'58%',sz:240,b:3,v:'cloth-mid',dp:0.045},
-      {l:'58%',t:'82%',sz:170,b:7,v:'cloth-far',dp:0.03}
+      {l:'72%',t:'18%',sz:760,b:0,v:'cloth-near',dp:0.06},
+      {l:'30%',t:'58%',sz:480,b:2,v:'cloth-mid',dp:0.045},
+      {l:'58%',t:'82%',sz:340,b:4,v:'cloth-far',dp:0.03}
     ];
     var MOB=[
-      {l:'100%',t:'12%',sz:300,b:0,v:'cloth-near',dp:0.06},
-      {l:'0%',  t:'56%',sz:240,b:3,v:'cloth-mid',dp:0.045},
-      {l:'96%', t:'82%',sz:150,b:7,v:'cloth-far',dp:0.03}
+      {l:'100%',t:'12%',sz:600,b:0,v:'cloth-near',dp:0.06},
+      {l:'0%',  t:'56%',sz:480,b:2,v:'cloth-mid',dp:0.045},
+      {l:'96%', t:'82%',sz:300,b:4,v:'cloth-far',dp:0.03}
     ];
     var probe=d.createElement('video');
     var hasAlpha=!!probe.canPlayType&&probe.canPlayType('video/webm; codecs="vp9"')!=='';
