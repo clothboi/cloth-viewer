@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Textyl scan anim - packaged test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0c272d; }
+  .spacer { height:60vh; color:#5cddc6; display:flex; align-items:center; justify-content:center; font-family:sans-serif; }
+  #tx-scan { height:100vh; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="spacer">scroll down (tests the in-view gate)</div>
+<div id="tx-scan"></div>
+<div class="spacer">scroll past (tests page scroll over canvas on touch)</div>
+<script type="module" src="scan-anim.js"></script>
+</body>
+</html>
