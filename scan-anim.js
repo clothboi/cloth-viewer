@@ -838,7 +838,7 @@ canvas.addEventListener('pointerdown', (e) => {
 canvas.addEventListener('pointermove', (e) => {
   if (isTouch) return;
   if (scanned) { if (spinDrag) { const dx = e.clientX - spinLastX; garment.rotation.y += dx * 0.01; spinLastX = e.clientX; } return; }
-  if ((performance.now() - loadT) / 1000 < 2) return;   // 2s intro grace, then phone follows the cursor on hover
+  // (no intro grace) phone follows the cursor straight away on hover
   e.preventDefault();
   lastInteract = performance.now();
   dragging = true;
@@ -971,8 +971,8 @@ function frame() {
 
   // weight: spring toward target, velocity-derived tilt
   if (!scanned) {
-  if (dragging) followEase = Math.min(1, followEase + dt * 1.7); else followEase = 0;
-  const k = dragging ? (1.3 + 6 * followEase) : 4;
+  if (dragging) followEase = Math.min(1, followEase + dt * 1.2); else followEase = 0;
+  const k = dragging ? (0.8 + 5.5 * followEase) : 4;
   vel.x += ((target.x - phone.position.x) * k - vel.x * 8.5) * dt;
   vel.z += ((target.z - phone.position.z) * k - vel.z * 8.5) * dt;
   phone.position.x += vel.x * dt * 8;
@@ -985,11 +985,8 @@ function frame() {
   let vib = 0;
   if (!everDragged) {
     const idle = (performance.now() - lastInteract) / 1000;
-    const cycle = idle % 1.5;
-    const burst = idle > 0.6 && cycle < 0.5;
-    if (((isTouch && idle > 1) || (!isTouch && idle > 4 && !pointerOver)) && !auto.on && !auto.done) startAuto();   // mobile auto-plays; desktop after 4s idle when not hovering
-    if (burst) vib = Math.sin(now * 100) * 0.09 * Math.sin((cycle / 0.5) * Math.PI);   // call-like rumble
-    drawDragMe(Math.floor(now * 6) % 2 === 1);   // screen pulses continuously, more often
+    if (((isTouch && idle > 1) || (!isTouch && idle > 4 && !pointerOver)) && !auto.on && !auto.done) startAuto();   // auto-play if no interaction (mobile sooner)
+    drawDragMe(false);   // steady screen, no attract flashing/rumble
   }
   const swayX = dragging ? Math.sin(now * 1.7) * 0.012 : 0;
   const swayZ = (dragging ? Math.sin(now * 2.3 + 1.3) * 0.015 : 0) + vib;
