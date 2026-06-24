@@ -306,7 +306,7 @@ parseGlb(ASSET + 'phone.glb').then((g) => {
 let everDragged = false, lastInteract = performance.now();
 const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
 const loadT = performance.now();
-let pointerOver = false, spinDrag = false, spinLastX = 0;
+let pointerOver = false, spinDrag = false, spinLastX = 0, followEase = 0;
 
 // phone-screen matrix rain (vertical only, dense)
 const rainCv = document.createElement('canvas');
@@ -450,8 +450,8 @@ function projectToPx(v3) {
 // pixel stream: 3D sprites so they pass BEHIND the phone on their way to the folder
 const motes = [];
 function dockWorldPoint() {
-  const fr = foldbtn.getBoundingClientRect(), hr = HR();
-  const px = fr.left - hr.left + fr.width / 2, py = fr.top - hr.top + fr.height / 2;
+  const fr = foldbtn.getBoundingClientRect(), hr = HR(), sc = SCL();
+  const px = (fr.left - hr.left + fr.width / 2) / sc.x, py = (fr.top - hr.top + fr.height / 2) / sc.y;
   const ndc = new THREE.Vector3((px / VW) * 2 - 1, -(py / VH) * 2 + 1, 0.5);
   ndc.unproject(camera);
   const dir = ndc.sub(camera.position).normalize();
@@ -649,7 +649,7 @@ const scanLook = new THREE.Vector3(0, 0, -0.2);
 const frontLook = new THREE.Vector3(0, 2.05, 0);
 const frontDir = new THREE.Vector3(0, 0.08, 1).normalize();
 const zoomEl = document.getElementById('txs-zoom');
-function syncZoom() { zoomEl.style.setProperty('--p', zoomEl.value + '%'); }
+function syncZoom() { zoomEl.style.setProperty('--p', (zoomEl.value / (zoomEl.max || 100) * 100) + '%'); }
 zoomEl.addEventListener('input', syncZoom);
 syncZoom();
 function frontDist() { return 9 - (zoomEl.value / 100) * 5.5; }   // slider: 3.5 close .. 9 far
@@ -689,8 +689,11 @@ mannbtn.addEventListener('click', () => {
 
 // folder click opens the swatch tray; swatches drag onto the garment (or the bin)
 function overGarment(e) {
-  const [gx, gy] = projectToPx(new THREE.Vector3(0, 2.0, 0));
-  return Math.hypot(EX(e) - gx, EY(e) - gy) < Math.min(VW, VH) * 0.2;
+  pointer.x = (EX(e) / VW) * 2 - 1; pointer.y = -(EY(e) / VH) * 2 + 1;
+  ray.setFromCamera(pointer, camera);
+  if (ray.intersectObject(garment, true).length) return true;
+  const [gx, gy] = projectToPx(new THREE.Vector3(0, 1.8, 0));
+  return Math.hypot(EX(e) - gx, EY(e) - gy) < Math.min(VW, VH) * 0.32;
 }
 function overTrash(e) {
   const r = trashbtn.getBoundingClientRect(), hr = HR(), s = SCL();
@@ -962,7 +965,8 @@ function frame() {
 
   // weight: spring toward target, velocity-derived tilt
   if (!scanned) {
-  const k = dragging ? 7 : 4;
+  if (dragging) followEase = Math.min(1, followEase + dt * 1.7); else followEase = 0;
+  const k = dragging ? (1.3 + 6 * followEase) : 4;
   vel.x += ((target.x - phone.position.x) * k - vel.x * 8.5) * dt;
   vel.z += ((target.z - phone.position.z) * k - vel.z * 8.5) * dt;
   phone.position.x += vel.x * dt * 8;
