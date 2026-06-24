@@ -18,8 +18,9 @@ function boot() {
   let VW = host.clientWidth || 800, VH = host.clientHeight || 600;
   let inView = true;
   const HR = () => host.getBoundingClientRect();
-  const EX = (e) => e.clientX - HR().left;
-  const EY = (e) => e.clientY - HR().top;
+  const SCL = () => { const r = HR(); return { x: host.clientWidth ? r.width / host.clientWidth : 1, y: host.clientHeight ? r.height / host.clientHeight : 1 }; };
+  const EX = (e) => (e.clientX - HR().left) / SCL().x;
+  const EY = (e) => (e.clientY - HR().top) / SCL().y;
 
 
 
@@ -689,8 +690,8 @@ function overGarment(e) {
   return Math.hypot(EX(e) - gx, EY(e) - gy) < Math.min(VW, VH) * 0.2;
 }
 function overTrash(e) {
-  const r = trashbtn.getBoundingClientRect(), hr = HR();
-  return EX(e) > r.left - hr.left - 20 && EX(e) < r.right - hr.left + 20 && EY(e) > r.top - hr.top - 20 && EY(e) < r.bottom - hr.top + 20;
+  const r = trashbtn.getBoundingClientRect(), hr = HR(), s = SCL();
+  return EX(e) > (r.left - hr.left)/s.x - 20 && EX(e) < (r.right - hr.left)/s.x + 20 && EY(e) > (r.top - hr.top)/s.y - 20 && EY(e) < (r.bottom - hr.top)/s.y + 20;
 }
 const trashbtn = document.getElementById('txs-trashbtn');
 const swatchesEl = document.getElementById('txs-swatches');
@@ -1165,6 +1166,9 @@ const onStageResize = () => {
 };
 addEventListener('resize', onStageResize);
 new ResizeObserver(onStageResize).observe(host);
+requestAnimationFrame(() => { try { onStageResize(); } catch (e) {} });
+setTimeout(() => { try { onStageResize(); } catch (e) {} }, 200);
+setTimeout(() => { try { onStageResize(); } catch (e) {} }, 600);
 new IntersectionObserver((en) => {
   const was = inView; inView = en[0].isIntersecting;
   if (inView && !was) lastInteract = performance.now();
