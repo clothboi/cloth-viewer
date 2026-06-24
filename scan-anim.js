@@ -17,6 +17,9 @@ function boot() {
   host.innerHTML = DOM;
   let VW = host.clientWidth || 800, VH = host.clientHeight || 600;
   let inView = true;
+  const slideEl = host.closest('section[data-label]');           // in the pitch deck this is the slide <section>; null on the standalone site
+  const slideActive = () => !slideEl || slideEl.hasAttribute("data-deck-active");  // deck marks the live slide; site = always active
+  let _wasLive = false;
   const HR = () => host.getBoundingClientRect();
   const SCL = () => { const r = HR(); return { x: host.clientWidth ? r.width / host.clientWidth : 1, y: host.clientHeight ? r.height / host.clientHeight : 1 }; };
   const EX = (e) => (e.clientX - HR().left) / SCL().x;
@@ -305,7 +308,7 @@ parseGlb(ASSET + 'phone.glb').then((g) => {
 
 let everDragged = false, lastInteract = performance.now();
 const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
-const loadT = performance.now();
+let loadT = performance.now();
 let pointerOver = false, spinDrag = false, spinLastX = 0, followEase = 0;
 
 // phone-screen matrix rain (vertical only, dense)
@@ -959,7 +962,10 @@ function autoTick(dt) {
 
 const clock = new THREE.Clock();
 function frame() {
-  if (!inView) { clock.getDelta(); requestAnimationFrame(frame); return; }
+  const _live = inView && slideActive();
+  if (_live && !_wasLive) { loadT = performance.now(); lastInteract = performance.now(); }  // restart the demo timeline when the slide becomes active
+  _wasLive = _live;
+  if (!_live) { clock.getDelta(); requestAnimationFrame(frame); return; }
   const dt = Math.min(clock.getDelta(), 0.05);
   autoTick(dt);
 
