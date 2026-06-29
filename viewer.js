@@ -48,6 +48,7 @@ function init(app) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
+  renderer.useLegacyLights = true;   // r155+ changed light units; restore the r136 scale the standalone was tuned in (set before PMREM env)
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
