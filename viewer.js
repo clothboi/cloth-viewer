@@ -1,398 +1,265 @@
-// Textyl cloth viewer — embeddable build.
-// Mounts into #tx-viewer-canvas, transparent background, no dev UI.
-// Fabric swap is driven by any element on the page with a [data-fabric] attribute.
-import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+// Textyl — shirt comparison (Default vs Seamless). Embeddable build.
+// Mounts into #tx-viewer-canvas, transparent background, no dev chrome.
+// Loads the two CLO garment GLBs + the madras PBR maps from ./shirt-comparison/.
+// esm.sh resolves the addons' bare `three` import to the same build, so all three share one instance (no import map needed).
+import * as THREE from 'https://esm.sh/three@0.160.0';
+import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'https://esm.sh/three@0.160.0/examples/jsm/environments/RoomEnvironment.js';
 
 const MOUNT_ID = 'tx-viewer-canvas';
-const app = document.getElementById(MOUNT_ID);
-if (!app) {
-  console.warn('[textyl-viewer] #' + MOUNT_ID + ' not found');
-} else {
-  init(app);
-}
+const _app = document.getElementById(MOUNT_ID);
+if (!_app) console.warn('[textyl-comparison] #' + MOUNT_ID + ' not found');
+else init(_app);
 
 function init(app) {
-  // ---------- config (final tuned values) ----------
-  const X_SEGS = 36, Y_SEGS = 36;
-  const REST = 0.16, MASS = 0.1;
-  const GRAVITY = new THREE.Vector3(0, -4.0, 0).multiplyScalar(MASS);
-  const FRICTION = 0.75;
-  const TIMESTEP = 18 / 1000, TIMESTEP_SQ = TIMESTEP * TIMESTEP;
-  const DRAG = 0.06, CONSTRAINT_ITER = 18, SUBSTEPS = 3;
-  const SPHERE_R = 1.5, SPHERE_C = new THREE.Vector3(0, 0, 0);
-  const SKIN_OFFSET = 0.1, PIN_LIFT = 0.1;
-  const BEND = true, BEND_STIFF = 0.25;
-  const FLOOR_Y = -2.2, START_Y = 2.0;
-  const SPIN_SENS = 0.0002, SPIN_DECAY = 0.94, SPIN_MAX = 0.15;
-  const AUTO_ROT = 0.000075, AIR_SPIN = 0.6, WIND_SCALE = 0.05;
-  const SMOOTH_ITERS = 2, SMOOTH_LAMBDA = 0.5, TILES = 4;
-  const WIND_ON = true;
+  const ASSET = (p) => new URL('shirt-comparison/' + p, import.meta.url).href;
+  if (getComputedStyle(app).position === 'static') app.style.position = 'relative';
 
-  const CDN = 'https://cdn.prod.website-files.com/6a0979ff745bb701c7a098de/';
-  const FABRICS = {
-    denim:       { file: '6a281f964dc2ec4183c3c4d2_denim_0039.png',       bend: 0.25 },
-    twill:       { file: '6a282069fae9b8afd8fbec24_twill_0890.png',       bend: 0.10 },
-    plain:       { file: '6a28202577b9144a53e8da4b_plain_0902.png',       bend: 0.08 },
-    houndstooth: { file: '6a28200e12e91bf04af2691c_houndstooth_1594.png', bend: 0.08 },
-    gingham:     { file: '6a281fe88b34465293d32c12_gingham_1112.png',     bend: 0.08 },
-    madras:      { file: '6a281fcf86f15756a04e71bd_madras_1911.png',      bend: 0.25 },
-  };
-  const DEFAULT_FABRIC = 'denim';
+  // ---------- overlay UI (scoped) ----------
+  const css = `
+  .txc-canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  .txc-canvas.txc-drag{cursor:grabbing}
+  .txc-label{position:absolute;transform:translate(-50%,0);text-align:center;font-family:'Inter',system-ui,sans-serif;font-weight:600;font-size:clamp(12px,1.4vw,17px);letter-spacing:.02em;color:#F3EFE7;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .5s}
+  .txc-label .txc-sub{display:block;margin-top:2px;font-weight:400;font-size:.72em;color:rgba(243,239,231,.55)}
+  .txc-label.txc-seam{color:#1D9E75}
+  .txc-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);font-family:'Inter',system-ui,sans-serif;font-size:12px;color:rgba(243,239,231,.5);pointer-events:none;opacity:0;transition:opacity .5s}
+  .txc-panel{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(243,239,231,.18);opacity:0;transition:opacity .5s}
+  .txc-panel span{font-size:12px;color:rgba(243,239,231,.55);user-select:none}
+  .txc-range{-webkit-appearance:none;appearance:none;width:clamp(110px,18vw,200px);height:4px;border-radius:4px;background:rgba(243,239,231,.18);outline:none;cursor:pointer}
+  .txc-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:#1D9E75;border:2px solid #fff;cursor:pointer}
+  .txc-range::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#1D9E75;border:2px solid #fff;cursor:pointer}
+  .txc-load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Inter',system-ui,sans-serif;font-size:13px;color:rgba(243,239,231,.5);letter-spacing:.04em;transition:opacity .5s;pointer-events:none}
+  .txc-ready .txc-label,.txc-ready .txc-hint,.txc-ready .txc-panel{opacity:1}`;
+  const styleEl = document.createElement('style'); styleEl.textContent = css; document.head.appendChild(styleEl);
 
-  // ---------- renderer / scene / camera ----------
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setClearColor(0x000000, 0);   // transparent -> blends with the page section
+  const canvas = document.createElement('canvas'); canvas.className = 'txc-canvas'; app.appendChild(canvas);
+  function mk(cls, t, sub) { const d = document.createElement('div'); d.className = cls; d.innerHTML = t + '<span class="txc-sub">' + sub + '</span>'; app.appendChild(d); return d; }
+  const lblA = mk('txc-label', 'Default', 'visible repeat');
+  const lblB = mk('txc-label txc-seam', 'Seamless', 'Textyl');
+  const hint = document.createElement('div'); hint.className = 'txc-hint'; hint.textContent = 'Drag to rotate'; app.appendChild(hint);
+  const panel = document.createElement('div'); panel.className = 'txc-panel';
+  panel.innerHTML = '<span>–</span><input type="range" class="txc-range" min="0" max="100" value="0" aria-label="Zoom"><span>+</span>';
+  app.appendChild(panel);
+  const zoomInput = panel.querySelector('.txc-range');
+  const loadEl = document.createElement('div'); loadEl.className = 'txc-load'; loadEl.textContent = 'Loading…'; app.appendChild(loadEl);
+
+  // ---------- renderer / scene ----------
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.domElement.style.touchAction = 'pan-y';   // vertical scroll passes through; horizontal drag spins
-  app.appendChild(renderer.domElement);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.NoToneMapping;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x10353c, 9, 20);
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+  const camTarget = new THREE.Vector3(0, 0, 0);
 
-  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-  camera.position.set(0, 1.3, 6.6);
-  const target = new THREE.Vector3(0, 0.25, 0);
-  camera.lookAt(target);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-  function size() {
-    const w = app.clientWidth || 600;
-    const h = app.clientHeight || 600;
-    renderer.setSize(w, h);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  }
-  size();
-  new ResizeObserver(size).observe(app);
+  const key = new THREE.DirectionalLight(0xffffff, 0.82); key.position.set(2.5, 3.5, 3.0); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xeaf2f0, 0.35); fill.position.set(-3, 1.5, 1.5); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.35); rim.position.set(0, 2, -4); scene.add(rim);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.05));
 
-  // ---------- lights: three-point ----------
-  scene.add(new THREE.HemisphereLight(0xdfe7e4, 0x0a2025, 0.18));
-  const key = new THREE.DirectionalLight(0xffffff, 1.8);
-  key.position.set(-4.5, 5, 4.5);
-  key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  key.shadow.camera.near = 1; key.shadow.camera.far = 25;
-  key.shadow.camera.left = -6; key.shadow.camera.right = 6;
-  key.shadow.camera.top = 6; key.shadow.camera.bottom = -6;
-  key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04;
-  scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.45);
-  fill.position.set(5, 2.5, 4);
-  scene.add(fill);
-  const back = new THREE.DirectionalLight(0x3fe3ee, 0.7);
-  back.position.set(-1.5, 2, -6);
-  scene.add(back);
-
-  // ---------- sphere + contact-shadow floor ----------
-  const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(SPHERE_R, 48, 32),
-    new THREE.MeshStandardMaterial({ color: 0x214a52, roughness: 0.85, metalness: 0.0 })
-  );
-  sphere.castShadow = true; sphere.receiveShadow = true;
-  scene.add(sphere);
-
-  const floor = new THREE.Mesh(
-    new THREE.CircleGeometry(9, 48).rotateX(-Math.PI / 2),
-    new THREE.ShadowMaterial({ opacity: 0.35 })   // only the shadow shows; no visible disc
-  );
-  floor.position.y = FLOOR_Y;
-  floor.receiveShadow = true;
-  scene.add(floor);
-
-  // ---------- cloth (Verlet) ----------
-  function startPos(u, v) {
-    return new THREE.Vector3((u - X_SEGS / 2) * REST, START_Y, (v - Y_SEGS / 2) * REST);
-  }
-  class Particle {
-    constructor(u, v) {
-      this.position = startPos(u, v);
-      this.previous = this.position.clone();
-      this.a = new THREE.Vector3();
-      this.pinned = false;
-    }
-    addForce(f) { this.a.addScaledVector(f, 1 / MASS); }
-    integrate() {
-      if (this.pinned) { this.a.set(0, 0, 0); return; }
-      const cur = this.position;
-      const next = cur.clone()
-        .addScaledVector(cur.clone().sub(this.previous), 1 - DRAG)
-        .addScaledVector(this.a, TIMESTEP_SQ);
-      this.previous.copy(cur);
-      this.position.copy(next);
-      this.a.set(0, 0, 0);
-    }
-  }
-
-  const particles = [];
-  const constraints = [];
-  const bendList = [];
-  const idx = (u, v) => u + v * (X_SEGS + 1);
-  for (let v = 0; v <= Y_SEGS; v++)
-    for (let u = 0; u <= X_SEGS; u++)
-      particles.push(new Particle(u, v));
-
-  let pinOn = true;
-  const PIN_RADIUS = 1;
-  const pinnedCap = [];
-  function applyPin() {
-    const cu = X_SEGS >> 1, cv = Y_SEGS >> 1;
-    for (const p of particles) p.pinned = false;
-    pinnedCap.length = 0;
-    if (!pinOn) return;
-    const surf = SPHERE_R + PIN_LIFT;
-    for (let dv = -PIN_RADIUS; dv <= PIN_RADIUS; dv++)
-      for (let du = -PIN_RADIUS; du <= PIN_RADIUS; du++) {
-        const part = particles[idx(cu + du, cv + dv)];
-        const x = du * REST, z = dv * REST;
-        const y = Math.sqrt(Math.max(0, surf * surf - x * x - z * z));
-        part.pinned = true;
-        const base = new THREE.Vector3(x, y, z);
-        part.position.copy(base); part.previous.copy(base);
-        pinnedCap.push({ part, base });
+  // ---------- per-shirt wind + shared saturation ----------
+  const windA = { value: 0 }, windB = { value: 0 }, satUniform = { value: 1.0 };
+  function setupMaterial(mat, isFabric, windRef) {
+    if (!mat || mat.userData._setup) return;
+    mat.userData._setup = true;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWind = windRef;                       // wind on EVERY part (fabric + buttons + stitch)
+      // displace in WORLD space (added in view space) so buttons on rotated/scaled nodes move with the fabric
+      shader.vertexShader = 'uniform float uWind;\n' + shader.vertexShader.replace(
+        '#include <project_vertex>',
+        '#include <project_vertex>\n' +
+        'vec3 _wp = (modelMatrix * vec4(transformed, 1.0)).xyz;\n' +
+        'float _wm = 1.0 - smoothstep(-0.62, 0.48, _wp.y);\n' +   // smooth shoulder->hem gradient
+        'float _ph = _wp.y * 2.6 + _wp.x * 1.3;\n' +
+        'vec3 _wind = vec3(sin(_ph + uWind * 1.45) * 0.005625, 0.0, sin(_ph * 0.8 + uWind * 1.15 + 1.7) * 0.004125) * _wm;\n' +
+        'gl_Position = projectionMatrix * (modelViewMatrix * vec4(transformed, 1.0) + viewMatrix * vec4(_wind, 0.0));\n'
+      );
+      if (isFabric) {
+        shader.uniforms.uSat = satUniform;
+        shader.fragmentShader = ('uniform float uSat;\n' + shader.fragmentShader).replace(
+          '#include <map_fragment>',
+          '#include <map_fragment>\n' +
+          'float _l = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));\n' +
+          'diffuseColor.rgb = clamp(mix(vec3(_l), diffuseColor.rgb, uSat), 0.0, 1.0);\n'
+        );
       }
-  }
-  function updatePinSpin(angle) {
-    if (!pinOn) return;
-    const c = Math.cos(angle), s = Math.sin(angle);
-    for (const { part, base } of pinnedCap) {
-      part.position.set(base.x * c - base.z * s, base.y, base.x * s + base.z * c);
-      part.previous.copy(part.position);
-    }
-  }
-  function addConstraint(a, b, stiff = 1) {
-    const dist = particles[a].position.distanceTo(particles[b].position);
-    const cc = [particles[a], particles[b], dist, stiff];
-    constraints.push(cc);
-    return cc;
-  }
-  for (let v = 0; v <= Y_SEGS; v++)
-    for (let u = 0; u <= X_SEGS; u++) {
-      if (u < X_SEGS) addConstraint(idx(u, v), idx(u + 1, v));
-      if (v < Y_SEGS) addConstraint(idx(u, v), idx(u, v + 1));
-      if (u < X_SEGS && v < Y_SEGS) {
-        addConstraint(idx(u, v), idx(u + 1, v + 1));
-        addConstraint(idx(u + 1, v), idx(u, v + 1));
-      }
-      if (BEND && u < X_SEGS - 1) bendList.push(addConstraint(idx(u, v), idx(u + 2, v), BEND_STIFF));
-      if (BEND && v < Y_SEGS - 1) bendList.push(addConstraint(idx(u, v), idx(u, v + 2), BEND_STIFF));
-    }
-  applyPin();
-
-  const diff = new THREE.Vector3();
-  function satisfy(a, b, dist, stiff) {
-    diff.subVectors(b.position, a.position);
-    const len = diff.length();
-    if (len === 0) return;
-    const corr = diff.multiplyScalar((1 - dist / len) * stiff);
-    const aP = a.pinned, bP = b.pinned;
-    if (aP && bP) return;
-    if (aP) { b.position.sub(corr); }
-    else if (bP) { a.position.add(corr); }
-    else { a.position.addScaledVector(corr, 0.5); b.position.addScaledVector(corr, -0.5); }
+    };
+    mat.needsUpdate = true;
   }
 
-  // ---------- cloth mesh ----------
-  const clothGeo = new THREE.PlaneGeometry(1, 1, X_SEGS, Y_SEGS);
-  const clothMat = new THREE.MeshStandardMaterial({
-    color: 0x2f5d8f, roughness: 0.75, metalness: 0.0, side: THREE.DoubleSide, flatShading: false,
-    transparent: true, alphaTest: 0.5,   // respect the texture alpha channel
-  });
-  const clothMesh = new THREE.Mesh(clothGeo, clothMat);
-  clothMesh.castShadow = true; clothMesh.receiveShadow = false;
-  scene.add(clothMesh);
-  const posAttr = clothGeo.attributes.position;
-  const normAttr = clothGeo.attributes.normal;
-  const smoothBuf = new Float32Array(posAttr.array.length);
-  const _du = new THREE.Vector3(), _dv = new THREE.Vector3(), _nrm = new THREE.Vector3();
-
-  function smoothPass() {
-    const arr = posAttr.array;
-    smoothBuf.set(arr);
-    for (let v = 0; v <= Y_SEGS; v++)
-      for (let u = 0; u <= X_SEGS; u++) {
-        const i = idx(u, v) * 3;
-        let sx = 0, sy = 0, sz = 0, n = 0;
-        if (u > 0)      { const j = idx(u - 1, v) * 3; sx += smoothBuf[j]; sy += smoothBuf[j + 1]; sz += smoothBuf[j + 2]; n++; }
-        if (u < X_SEGS) { const j = idx(u + 1, v) * 3; sx += smoothBuf[j]; sy += smoothBuf[j + 1]; sz += smoothBuf[j + 2]; n++; }
-        if (v > 0)      { const j = idx(u, v - 1) * 3; sx += smoothBuf[j]; sy += smoothBuf[j + 1]; sz += smoothBuf[j + 2]; n++; }
-        if (v < Y_SEGS) { const j = idx(u, v + 1) * 3; sx += smoothBuf[j]; sy += smoothBuf[j + 1]; sz += smoothBuf[j + 2]; n++; }
-        if (!n) continue;
-        const inv = 1 / n;
-        arr[i]     += (sx * inv - smoothBuf[i])     * SMOOTH_LAMBDA;
-        arr[i + 1] += (sy * inv - smoothBuf[i + 1]) * SMOOTH_LAMBDA;
-        arr[i + 2] += (sz * inv - smoothBuf[i + 2]) * SMOOTH_LAMBDA;
-      }
-  }
-  function computeGridNormals() {
-    const a = posAttr.array;
-    for (let v = 0; v <= Y_SEGS; v++)
-      for (let u = 0; u <= X_SEGS; u++) {
-        const iL = idx(Math.max(u - 1, 0), v) * 3;
-        const iR = idx(Math.min(u + 1, X_SEGS), v) * 3;
-        const iD = idx(u, Math.max(v - 1, 0)) * 3;
-        const iU = idx(u, Math.min(v + 1, Y_SEGS)) * 3;
-        _du.set(a[iR] - a[iL], a[iR + 1] - a[iL + 1], a[iR + 2] - a[iL + 2]);
-        _dv.set(a[iU] - a[iD], a[iU + 1] - a[iD + 1], a[iU + 2] - a[iD + 2]);
-        _nrm.crossVectors(_dv, _du).normalize();
-        normAttr.setXYZ(idx(u, v), _nrm.x, _nrm.y, _nrm.z);
-      }
-    normAttr.needsUpdate = true;
-  }
-  function syncMesh() {
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i].position;
-      posAttr.setXYZ(i, p.x, p.y, p.z);
-    }
-    for (let it = 0; it < SMOOTH_ITERS; it++) smoothPass();
-    posAttr.needsUpdate = true;
-    computeGridNormals();
-    clothGeo.computeBoundingSphere();
+  const TARGET_HEIGHT = 1.55;
+  let shirtWidth = 1.0;
+  function makeShirt(gltfScene, windRef) {
+    const group = new THREE.Group();
+    group.add(gltfScene);
+    let box = new THREE.Box3().setFromObject(gltfScene);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const s = TARGET_HEIGHT / size.y;
+    gltfScene.scale.setScalar(s);
+    gltfScene.position.sub(center.multiplyScalar(s));
+    box = new THREE.Box3().setFromObject(gltfScene);
+    shirtWidth = Math.max(shirtWidth, box.getSize(new THREE.Vector3()).x);
+    gltfScene.traverse(o => {
+      if (!o.isMesh || !o.material) return;
+      o.frustumCulled = false;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach(m => {
+        m.side = THREE.DoubleSide;
+        if ('envMapIntensity' in m) m.envMapIntensity = 0.30;
+        const n = (m.name || '').toLowerCase();
+        const isFabric = n.includes('fabric') || n.includes('gingham');
+        if (isFabric) {
+          m.transparent = false; m.depthWrite = true; m.alphaTest = 0;
+          if (m.normalMap) m.normalScale.set(0.5, 0.5);
+          if (m.map) { m.map.anisotropy = 8; m.map.needsUpdate = true; }
+          [m.map, m.normalMap, m.roughnessMap].forEach(t => {           // scale texture mapping to 1.25
+            if (t && !t._scaled) { t.repeat.multiplyScalar(1.25); t._scaled = true; t.needsUpdate = true; }
+          });
+        }
+        setupMaterial(m, isFabric, windRef);
+      });
+    });
+    return group;
   }
 
-  // ---------- textures + swatch wiring ----------
-  const texLoader = new THREE.TextureLoader();
-  texLoader.setCrossOrigin('anonymous');
-  const maxAniso = renderer.capabilities.getMaxAnisotropy();
-  const texCache = {};
-  function configureTex(t) {
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(TILES, TILES);
-    t.anisotropy = maxAniso;
-  }
-  function setFabric(name) {
-    const f = FABRICS[name];
-    if (!f) return;
-    for (const c of bendList) c[3] = f.bend;
-    document.querySelectorAll('[data-fabric]').forEach((el) =>
-      el.classList.toggle('is-active', el.dataset.fabric === name));
-    const cached = texCache[f.file];
-    if (cached) { clothMat.map = cached; clothMat.color.set(0xffffff); clothMat.needsUpdate = true; return; }
-    texLoader.load(CDN + f.file, (tex) => {
-      configureTex(tex);
-      texCache[f.file] = tex;
-      clothMat.map = tex; clothMat.color.set(0xffffff); clothMat.needsUpdate = true;
+  const spin = { y: 0, x: 0 }, spinCur = { y: 0, x: 0 };
+  let groups = [];
+
+  function retexture(root, cfg) {
+    root.traverse(o => {
+      if (!o.isMesh || !o.material) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach(m => {
+        const n = (m.name || '').toLowerCase();
+        if (!(n.includes('fabric') || n.includes('gingham'))) return;
+        if (cfg.base && m.map) { m.map.image = cfg.base; m.map.needsUpdate = true; }
+        if (cfg.normal && m.normalMap) { m.normalMap.image = cfg.normal; m.normalMap.needsUpdate = true; }
+        if (cfg.rough && m.roughnessMap) { m.roughnessMap.image = cfg.rough; m.roughnessMap.needsUpdate = true; m.roughness = 1.0; }
+        if (cfg.sheen != null) {
+          m.sheen = cfg.sheen;
+          m.sheenColor = new THREE.Color(cfg.sheenColor != null ? cfg.sheenColor : 0xffffff);
+          m.sheenRoughness = cfg.sheenRoughness != null ? cfg.sheenRoughness : 0.6;
+        }
+        m.needsUpdate = true;
+      });
     });
   }
-  document.querySelectorAll('[data-fabric]').forEach((el) => {
-    el.style.cursor = 'pointer';
-    el.addEventListener('click', () => setFabric(el.dataset.fabric));
-  });
-  setFabric(DEFAULT_FABRIC);
 
-  // ---------- drag to spin ----------
-  let spinVel = 0, spinAngle = 0, dragging = false, lastX = 0;
-  renderer.domElement.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; });
-  window.addEventListener('pointermove', (e) => {
+  // ---------- load assets ----------
+  const gltf = new GLTFLoader();
+  function loadGLB(url) { return new Promise((res, rej) => gltf.load(url, g => res(g.scene), undefined, rej)); }
+  function loadImg(url) { return new Promise((res, rej) => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
+
+  Promise.all([
+    loadGLB(ASSET('default.glb')), loadGLB(ASSET('seamless.glb')),
+    loadImg(ASSET('madras_input.png')), loadImg(ASSET('madras_base.png')),
+    loadImg(ASSET('madras_normal.png')), loadImg(ASSET('madras_rough.png'))
+  ]).then(([a, b, defBase, seamBase, seamNormal, seamRough]) => {
+    const gA = makeShirt(a, windA), gB = makeShirt(b, windB);
+    retexture(a, { base: defBase });                                            // Default <- raw input
+    retexture(b, { base: seamBase, normal: seamNormal, rough: seamRough, sheen: 0.7, sheenRoughness: 0.7 }); // Seamless
+    scene.add(gA, gB);
+    groups = [gA, gB];
+    frameCameraToContent();
+    app.classList.add('txc-ready');
+    loadEl.style.opacity = '0'; setTimeout(() => loadEl.remove(), 500);
+  }).catch(err => {
+    loadEl.textContent = 'Could not load: ' + (err && err.message || err);
+    console.error('[textyl-comparison]', err);
+  });
+
+  // ---------- camera framing + zoom (default = most zoomed-out; zoom in converges) ----------
+  let fitDist = 6, zoomT = 0;
+  const DX_OUT = 0.625, DX_IN = 0.50;
+  function frameCameraToContent() {
+    const contentW = (shirtWidth * DX_OUT + shirtWidth / 2) * 2, contentH = TARGET_HEIGHT;
+    const vFov = camera.fov * Math.PI / 180;
+    const distH = (contentH / 2) / Math.tan(vFov / 2);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+    const distW = (contentW / 2) / Math.tan(hFov / 2);
+    fitDist = Math.max(distH, distW) * 1.12;
+    applyZoom();
+  }
+  function applyZoom() {
+    const dist = fitDist * (1 - zoomT * 0.55);
+    camera.position.set(0, 0, dist);
+    camera.lookAt(camTarget);
+    const dx = shirtWidth * (DX_OUT - (DX_OUT - DX_IN) * zoomT);
+    if (groups[0]) groups[0].position.x = -dx;
+    if (groups[1]) groups[1].position.x = dx;
+  }
+  zoomInput.addEventListener('input', e => { zoomT = (+e.target.value) / 100; applyZoom(); });
+
+  // ---------- drag to spin both on their own axis ----------
+  let dragging = false, lastX = 0, lastY = 0;
+  function down(e) { dragging = true; canvas.classList.add('txc-drag'); const p = e.touches ? e.touches[0] : e; lastX = p.clientX; lastY = p.clientY; }
+  function moveH(e) {
     if (!dragging) return;
-    spinVel -= (e.clientX - lastX) * SPIN_SENS;
-    spinVel = Math.max(-SPIN_MAX, Math.min(SPIN_MAX, spinVel));
-    lastX = e.clientX;
-  });
-  window.addEventListener('pointerup', () => { dragging = false; });
-
-  // ---------- zoom slider (vertical, pinned to right edge) ----------
-  const ZOOM_MIN = 4.2, ZOOM_MAX = 10.0;
-  let camDist = THREE.MathUtils.clamp(camera.position.distanceTo(target), ZOOM_MIN, ZOOM_MAX);
-  const _zoomOff = new THREE.Vector3();
-  const zStyle = document.createElement('style');
-  zStyle.textContent =
-    '.tx-zoom{position:absolute;right:14px;top:50%;transform:translateY(-50%);z-index:12;width:30px;height:170px;display:flex;align-items:center;justify-content:center;}' +
-    '.tx-zoom-track{position:relative;width:6px;height:100%;border-radius:999px;background:rgba(0,0,0,0.35);box-shadow:inset 0 1px 3px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.10);cursor:pointer;}' +
-    '.tx-zoom-fill{position:absolute;left:0;right:0;top:0;border-radius:999px;background:linear-gradient(180deg,rgba(92,221,198,0.55),rgba(92,221,198,0.12));}' +
-    '.tx-zoom-thumb{position:absolute;left:50%;width:18px;height:18px;margin-left:-9px;margin-top:-9px;border-radius:50%;cursor:grab;background-image:radial-gradient(circle at 50% 35%,rgba(255,255,255,0.95),rgba(235,247,244,0.7) 45%,rgba(200,225,221,0.85) 75%);border:1px solid rgba(255,255,255,0.5);box-shadow:0 2px 6px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.85);touch-action:none;}' +
-    '.tx-zoom-thumb:active{cursor:grabbing;}';
-  document.head.appendChild(zStyle);
-  const zoomEl = document.createElement('div');
-  zoomEl.className = 'tx-zoom';
-  zoomEl.innerHTML = '<div class="tx-zoom-track"><div class="tx-zoom-fill"></div><div class="tx-zoom-thumb"></div></div>';
-  app.appendChild(zoomEl);
-  const zTrack = zoomEl.querySelector('.tx-zoom-track');
-  const zFill = zoomEl.querySelector('.tx-zoom-fill');
-  const zThumb = zoomEl.querySelector('.tx-zoom-thumb');
-  function zoomRender() {
-    const t = (camDist - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN);   // 0 = top (in), 1 = bottom (out)
-    zThumb.style.top = (t * 100) + '%';
-    zFill.style.height = (t * 100) + '%';
+    const p = e.touches ? e.touches[0] : e;
+    spin.y += (p.clientX - lastX) * 0.011;
+    spin.x += (p.clientY - lastY) * 0.006;
+    spin.x = Math.max(-0.6, Math.min(0.6, spin.x));
+    lastX = p.clientX; lastY = p.clientY;
+    if (e.cancelable) e.preventDefault();
   }
-  function zoomFromY(clientY) {
-    const r = zTrack.getBoundingClientRect();
-    let t = (clientY - r.top) / r.height;
-    t = Math.min(1, Math.max(0, t));
-    camDist = ZOOM_MIN + t * (ZOOM_MAX - ZOOM_MIN);
-    zoomRender();
-  }
-  let zDrag = false;
-  zThumb.addEventListener('pointerdown', (e) => { zDrag = true; e.stopPropagation(); });
-  zTrack.addEventListener('pointerdown', (e) => { zDrag = true; zoomFromY(e.clientY); e.stopPropagation(); });
-  window.addEventListener('pointermove', (e) => { if (zDrag) zoomFromY(e.clientY); });
-  window.addEventListener('pointerup', () => { zDrag = false; });
-  zoomRender();
+  function up() { dragging = false; canvas.classList.remove('txc-drag'); }
+  canvas.addEventListener('pointerdown', down);
+  window.addEventListener('pointermove', moveH, { passive: false });
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
 
-  // ---------- simulate ----------
-  const tmpForce = new THREE.Vector3();
-  const airForce = new THREE.Vector3();
-  const windForce = new THREE.Vector3();
-  function simulate(time) {
-    for (let s = 0; s < SUBSTEPS; s++) {
-      for (const p of particles) p.addForce(GRAVITY);
-      if (WIND_ON) {
-        const w = Math.sin(time / 700) * 6 + 4;
-        windForce.set(w, Math.sin(time / 500) * 1.5, Math.cos(time / 600) * 5).multiplyScalar(MASS * WIND_SCALE);
-        for (const p of particles) p.addForce(windForce);
-      }
-      if (Math.abs(spinVel) > 1e-5) {
-        for (const p of particles) {
-          if (p.pinned) continue;
-          airForce.set(-p.position.z, 0, p.position.x).multiplyScalar(AIR_SPIN * spinVel);
-          p.addForce(airForce);
-        }
-      }
-      for (const p of particles) p.integrate();
-      for (let i = 0; i < CONSTRAINT_ITER; i++)
-        for (const c of constraints) satisfy(c[0], c[1], c[2], c[3]);
-      for (const p of particles) {
-        tmpForce.subVectors(p.position, SPHERE_C);
-        const d = tmpForce.length();
-        const surf = SPHERE_R + SKIN_OFFSET;
-        if (d < surf && d > 1e-6) {
-          const n = tmpForce.multiplyScalar(1 / d);
-          p.position.copy(SPHERE_C).addScaledVector(n, surf);
-          const prev = p.previous.clone().sub(SPHERE_C);
-          const pd = prev.length();
-          if (pd < surf && pd > 1e-6) p.previous.copy(SPHERE_C).addScaledVector(prev.multiplyScalar(1 / pd), surf);
-          p.previous.lerp(p.position, FRICTION);
-        }
-        if (p.position.y < FLOOR_Y + SKIN_OFFSET) {
-          p.position.y = FLOOR_Y + SKIN_OFFSET;
-          p.previous.lerp(p.position, FRICTION);
-        }
-      }
-    }
+  // ---------- labels ----------
+  const _v = new THREE.Vector3();
+  function placeLabel(el, group) {
+    if (!group) return;
+    _v.set(group.position.x, -TARGET_HEIGHT / 2 - 0.12, 0).project(camera);
+    el.style.left = ((_v.x * 0.5 + 0.5) * app.clientWidth) + 'px';
+    el.style.top = ((-_v.y * 0.5 + 0.5) * app.clientHeight) + 'px';
   }
 
-  // ---------- loop (render only when on screen) ----------
+  // ---------- sizing ----------
+  function resize() {
+    const w = app.clientWidth || 600, h = app.clientHeight || 400;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    frameCameraToContent();
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(app);
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- render only while on-screen ----------
   let visible = true;
-  new IntersectionObserver((entries) => { visible = entries[0].isIntersecting; }, { threshold: 0 }).observe(app);
+  new IntersectionObserver(e => { visible = e[0].isIntersecting; }, { threshold: 0 }).observe(app);
 
-  function animate(t) {
-    requestAnimationFrame(animate);
+  const clock = new THREE.Clock();
+  let windT = 0;
+  function tick() {
+    requestAnimationFrame(tick);
     if (!visible) return;
-    spinAngle += spinVel; spinVel *= SPIN_DECAY;
-    updatePinSpin(spinAngle);
-    sphere.rotation.y = spinAngle;
-    simulate(t);
-    syncMesh();
-    if (AUTO_ROT) {
-      const a = AUTO_ROT, px = camera.position.x, pz = camera.position.z;
-      camera.position.x = px * Math.cos(a) - pz * Math.sin(a);
-      camera.position.z = px * Math.sin(a) + pz * Math.cos(a);
+    const dt = clock.getDelta();
+    windT += dt;
+    windA.value = windT;
+    windB.value = windT + 7.3;                 // phase-offset shirt 2 so the pair doesn't sway in sync
+    spinCur.y += (spin.y - spinCur.y) * Math.min(1, dt * 8);
+    spinCur.x += (spin.x - spinCur.x) * Math.min(1, dt * 8);
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i];
+      const wv = (i === 0) ? windA.value : windB.value;
+      g.rotation.y = spinCur.y;
+      g.rotation.x = spinCur.x;
+      g.rotation.z = Math.sin(wv * 0.9) * 0.011;
+      g.position.y = Math.sin(wv * 0.7 + 1.0) * 0.015;
     }
-    _zoomOff.copy(camera.position).sub(target).setLength(camDist);   // apply slider zoom
-    camera.position.copy(target).add(_zoomOff);
-    camera.lookAt(target);
+    placeLabel(lblA, groups[0]);
+    placeLabel(lblB, groups[1]);
     renderer.render(scene, camera);
   }
-  animate(0);
+  tick();
 }
