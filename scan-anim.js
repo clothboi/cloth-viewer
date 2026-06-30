@@ -2,6 +2,7 @@
 // host: <div id="tx-scan"></div> sized by the page; assets live in ./scan/
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const ASSET = new URL('scan/', import.meta.url).href;
 const CSS = "#tx-scan { position:relative; width:100%; height:100%; min-height:480px; overflow:hidden; background:transparent; font-family:'Instrument Sans',sans-serif; }\n  #tx-scan #txs-c { width:100%; height:100%; display:block; touch-action:pan-y; position:relative; z-index:1; }\n  #tx-scan #txs-hint { position:absolute; bottom:24px; width:100%; text-align:center; color:#5cddc6; font-size:13px; letter-spacing:.12em; text-transform:uppercase; pointer-events:none; }\n  #tx-scan #txs-head { position:absolute; top:44px; left:50%; transform:translateX(-50%); width:min(680px, 90vw); text-align:left; pointer-events:none; z-index:2; transition:opacity .35s ease, transform .35s ease; }\n  #tx-scan #txs-head.out { opacity:0; transform:translateX(-50%) translateY(10px); }\n  #tx-scan #txs-head .eyebrow { color:#5cddc6; font-size:13px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; margin-bottom:14px; text-shadow:0 1px 4px rgba(0,0,0,0.5); }\n  #tx-scan #txs-head h2 { color:#ecf3f1; font-size:40px; line-height:1.1; font-weight:500; letter-spacing:-0.02em; margin:0 0 12px; text-shadow:0 2px 8px rgba(0,0,0,0.6); }\n  #tx-scan #txs-head .sub { color:#c6d6d3; font-size:17px; font-weight:500; margin:0 0 8px; }\n  #tx-scan #txs-head .meta { color:#98aeac; font-size:13px; font-weight:500; margin:0; }\n  #tx-scan #txs-dock { position:absolute; left:50%; bottom:18px; transform:translate(-50%, 140%); display:flex; align-items:center; gap:clamp(24px, 7vw, 96px); padding:10px clamp(20px, 7vw, 110px); max-width:calc(100% - 20px); box-sizing:border-box; border-radius:999px; background:linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03)); border:1px solid rgba(255,255,255,0.14); box-shadow:inset 0 1px 0 rgba(255,255,255,0.2), 0 12px 32px rgba(0,0,0,0.4); backdrop-filter:blur(14px); transition:transform .6s cubic-bezier(.2,.9,.3,1.2); z-index:3; }\n  #tx-scan #txs-dock.up { transform:translate(-50%, 0); }\n  #tx-scan .dockbtn { position:relative; width:46px; height:46px; display:flex; align-items:center; justify-content:center; cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:none; }\n  #tx-scan .dockbtn svg { width:36px; height:36px; }\n  #tx-scan .dockbtn .lbl { position:absolute; bottom:88px; left:50%; transform:translateX(-50%); white-space:nowrap; color:#5cddc6; font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; background:rgba(7,20,20,0.75); padding:6px 12px; border-radius:999px; border:1px solid rgba(92,221,198,0.3); opacity:0; transition:opacity .3s; pointer-events:none; }\n  #tx-scan .dockbtn.prompt .lbl { opacity:1; animation:lblflash 1.2s ease-in-out infinite; }\n  #tx-scan .dockbtn.prompt svg { animation:bounce 1.2s ease-in-out infinite; }\n  @keyframes bounce { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-9px); } }\n  @keyframes lblflash { 0%,100% { opacity:1; } 50% { opacity:0.45; } }\n  #tx-scan #txs-suckimg { position:absolute; pointer-events:none; z-index:4; background-size:cover; border-radius:8px; border:1px solid rgba(255,255,255,0.3); transition:all .9s cubic-bezier(.5,0,.8,.4); }\n  #tx-scan #txs-ghostfold { position:absolute; left:0; top:0; pointer-events:none; z-index:5; width:42px; height:42px; display:none; }\n  #tx-scan #txs-blog { position:absolute; top:50%; right:calc(50% + 210px); transform:translateY(-50%); text-align:right; z-index:2; opacity:0; transition:opacity .5s; pointer-events:none; }\n  #tx-scan #txs-blog.show { opacity:1; }\n  #tx-scan #txs-blog .bt { color:#ecf3f1; font-size:20px; font-weight:600; margin-bottom:14px; }\n  #tx-scan #txs-blog .bl { color:#98aeac; font-size:13px; font-weight:500; margin:7px 0; opacity:0; transform:translateX(10px); transition:opacity .4s, transform .4s; }\n  #tx-scan #txs-blog .bl b { color:#c6d6d3; font-weight:600; }\n  #tx-scan #txs-blog .bl.on { opacity:1; transform:none; }\n  #tx-scan #txs-zoom { position:absolute; right:-44px; top:50%; width:180px; transform:translateY(-50%) rotate(-90deg); -webkit-appearance:none; appearance:none; background:transparent; opacity:0; pointer-events:none; transition:opacity .4s; z-index:3; }\n  #tx-scan #txs-zoom.show { opacity:1; pointer-events:auto; }\n  #tx-scan #txs-zoomico { position:absolute; right:36px; top:calc(50% - 124px); width:22px; height:22px; opacity:0; transition:opacity .4s; z-index:3; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.5)); }\n  #tx-scan #txs-zoomico.show { opacity:1; }\n  #tx-scan #txs-zoom::-webkit-slider-runnable-track { height:6px; border-radius:999px; background:linear-gradient(to right, rgba(92,221,198,0.75) var(--p,25%), rgba(10,40,46,0.8) var(--p,25%)); box-shadow:inset 0 1px 3px rgba(0,0,0,0.65), 0 1px 0 rgba(255,255,255,0.08); }\n  #tx-scan #txs-zoom::-webkit-slider-thumb { -webkit-appearance:none; width:20px; height:20px; margin-top:-7px; border-radius:50%; background:radial-gradient(circle at 35% 28%, #ffffff 0%, #e9f7f3 22%, #bce9df 55%, #74c5b5 100%); border:1px solid rgba(60,150,170,0.75); box-shadow:inset 0 -2px 3px rgba(0,55,65,0.45), 0 2px 6px rgba(0,0,0,0.5); cursor:pointer; }\n  #tx-scan #txs-zoom::-moz-range-track { height:6px; border-radius:999px; background:linear-gradient(to right, rgba(92,221,198,0.75) var(--p,25%), rgba(10,40,46,0.8) var(--p,25%)); box-shadow:inset 0 1px 3px rgba(0,0,0,0.65); }\n  #tx-scan #txs-zoom::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:radial-gradient(circle at 35% 28%, #ffffff 0%, #e9f7f3 22%, #bce9df 55%, #74c5b5 100%); border:1px solid rgba(60,150,170,0.75); box-shadow:inset 0 -2px 3px rgba(0,55,65,0.45), 0 2px 6px rgba(0,0,0,0.5); cursor:pointer; }\n  #tx-scan #txs-swatches { position:absolute; left:50%; bottom:106px; transform:translateX(-50%); display:flex; gap:clamp(8px, 2vw, 14px); max-width:calc(100% - 16px); z-index:3; pointer-events:none; }\n  #tx-scan .sw { width:clamp(44px, 12vw, 64px); height:clamp(44px, 12vw, 64px); border-radius:12px; background-size:cover; border:1px solid rgba(255,255,255,0.3); box-shadow:0 6px 16px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.25); opacity:0; transform:translateY(26px) scale(0.6); transition:opacity .35s ease, transform .45s cubic-bezier(.2,.9,.3,1.3); pointer-events:auto; cursor:grab; touch-action:none; }\n  #tx-scan .sw.in { opacity:1; transform:none; }\n  #tx-scan #txs-ghostsw { position:absolute; left:0; top:0; width:56px; height:56px; border-radius:10px; background-size:cover; pointer-events:none; z-index:5; display:none; border:1px solid rgba(255,255,255,0.45); }\n  #tx-scan #txs-trashbtn.hot svg { filter:drop-shadow(0 0 9px rgba(92,221,198,0.95)); }\n  #tx-scan #txs-ghostcur { position:absolute; left:0; top:0; width:22px; height:22px; border-radius:50%; border:2px solid rgba(236,243,241,0.95); background:rgba(92,221,198,0.35); box-shadow:0 0 12px rgba(92,221,198,0.5); pointer-events:none; z-index:6; opacity:0; transition:opacity .4s; }\n  #tx-scan #txs-swhint { position:absolute; left:50%; bottom:188px; transform:translateX(-50%); white-space:nowrap; color:#5cddc6; font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; background:rgba(7,20,20,0.75); padding:6px 14px; border-radius:999px; border:1px solid rgba(92,221,198,0.3); opacity:0; transition:opacity .35s; pointer-events:none; z-index:3; }\n  #tx-scan #txs-swhint.on { opacity:1; animation:lblflash 1.2s ease-in-out infinite; }\n  #tx-scan .sw, #tx-scan #txs-zoom { touch-action:none; }";
@@ -81,13 +82,18 @@ const hint = { textContent: '' };   // bottom hint removed: header carries the c
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));   // before setSize, always
 renderer.setSize(VW, VH);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.useLegacyLights = true;   // match comparison scene (r155+ light-unit change); set before PMREM env
 
 const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 const camera = new THREE.PerspectiveCamera(40, VW/VH, 0.1, 50);
 camera.position.set(0, 8.5, 5.8);
 camera.lookAt(0, 0, -0.2);
 
-const amb = new THREE.AmbientLight(0xffffff, 1.1);
+const amb = new THREE.AmbientLight(0xffffff, 0.45);
 scene.add(amb);
 
 // soft radial floor: mid grey melting to nothing
@@ -109,7 +115,7 @@ floor.rotation.x = -Math.PI/2;
 floor.position.y = -0.012;
 floor.renderOrder = -1;
 scene.add(floor);
-const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+const sun = new THREE.DirectionalLight(0xffffff, 0.85);
 sun.position.set(-3, 6, 2);
 scene.add(sun);
 
@@ -122,9 +128,9 @@ function mkLight(colour, intensity, x, y, z) {
   rig.add(L, L.target);
   return L;
 }
-mkLight(0xfff1e0, 1.5, -3.5, 4.5, 4.0);   // key: warm, high front-left
-mkLight(0xdce9ff, 0.5,  3.0, 2.5, 4.0);   // fill: cool, low front-right
-mkLight(0xffffff, 0.8,  0.5, 3.2, -5.5);  // rim: shoulder height behind, edge kiss not floodlight
+mkLight(0xfff1e0, 0.60, -3.5, 4.5, 4.0);   // key: warm, high front-left
+mkLight(0xdce9ff, 0.18,  3.0, 2.5, 4.0);   // fill: cool, low front-right
+mkLight(0xffffff, 0.45,  0.5, 3.2, -5.5);  // rim: shoulder height behind, edge kiss not floodlight
 rig.visible = false;
 scene.add(rig);
 
@@ -137,17 +143,18 @@ const fgeo = new THREE.PlaneGeometry(4, 4, 48, 48);
   const p = fgeo.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i);
-    const edge = Math.min(1, Math.max(0, (Math.hypot(x, y) - 0.55) / 1.15));   // ~flat centre, drapes toward edges
+    const edge = Math.min(1, Math.max(0, (Math.hypot(x, y) - 0.40) / 1.30));   // flat scanned centre, more of the cloth drapes
     const e = edge * edge;
-    let z = (Math.sin(x * 1.6 + 0.7) * 0.05 + Math.cos(y * 1.3 - 0.4) * 0.06 + Math.sin((x + y) * 0.9) * 0.035) * e;
-    z += (Math.random() - 0.5) * 0.012 * edge;
+    let z = (Math.sin(x * 1.7 + 0.7) * 0.13 + Math.cos(y * 1.4 - 0.4) * 0.15 + Math.sin((x + y) * 1.0) * 0.09) * e;
+    z += Math.sin(x * 0.9 - y * 1.1) * 0.10 * e;           // a soft diagonal fold across the cloth
+    z += (Math.random() - 0.5) * 0.03 * edge;
     p.setZ(i, z);
   }
   fgeo.computeVertexNormals();
 })();
 const fabric = new THREE.Mesh(
   fgeo,
-  new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.95, metalness: 0 })
+  new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.92, metalness: 0, envMapIntensity: 0.22 })
 );
 fabric.rotation.x = -Math.PI/2;
 scene.add(fabric);
@@ -562,8 +569,13 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
     torsoMat.roughness = 0.85;
     fabricMats.forEach((m) => {
       m.side = THREE.DoubleSide; m.transparent = false; m.depthWrite = true; m.alphaTest = 0;
+      if ('envMapIntensity' in m) m.envMapIntensity = 0.30;          // room env -> specular, matches comparison shirt
+      if ('sheen' in m) { m.sheen = 0.7; m.sheenRoughness = 0.7; m.sheenColor = new THREE.Color(0xffffff); }
+      if (m.normalMap) m.normalScale.set(0.5, 0.5);
       [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.repeat.multiplyScalar(1.25); t._sc = true; t.needsUpdate = true; } });
+      m.needsUpdate = true;
     });
+    applySwatch(SWATCHES[3]);   // shirt arrives in plain, not the baked gingham
     const CELL = 0.12;
     const grid = new Map();
     const gkey = (x, y, z) => x + ',' + y + ',' + z;
@@ -595,7 +607,7 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
     mesh.geometry.setAttribute('aFree', new THREE.BufferAttribute(free, 1));
 
     const mat = mesh.material;
-    if (mat !== torsoMat) mat.roughness = 0.45;   // buttons: subtle sheen, not glass
+    if (mat !== torsoMat) { mat.roughness = 0.45; if ('envMapIntensity' in mat) mat.envMapIntensity = 0.6; }   // buttons: subtle sheen, not glass
     if ('specularIntensity' in mat) mat.specularIntensity = 0.2;
     mat.needsUpdate = true;   // wind disabled for now
     }
@@ -702,8 +714,8 @@ function applySwatch(spec) {
   const set = (rec) => {
     for (const m of fabricMats) {
       if (m.map && rec.b) { m.map.image = rec.b; m.map.colorSpace = THREE.SRGBColorSpace; m.map.needsUpdate = true; }
-      if (m.normalMap && rec.n) { m.normalMap.image = rec.n; m.normalMap.needsUpdate = true; m.normalScale.set(1, 1); }
-      if (m.roughnessMap && rec.r) { m.roughnessMap.image = rec.r; m.roughnessMap.needsUpdate = true; m.roughness = 1.0; }
+      if (m.normalMap && rec.n) { m.normalMap.image = rec.n; m.normalMap.needsUpdate = true; m.normalScale.set(0.5, 0.5); }
+      if (m.roughnessMap && rec.r) { m.roughnessMap.image = rec.r; m.roughnessMap.needsUpdate = true; m.roughness = 0.82; }
       m.color.set(0xffffff);
       m.needsUpdate = true;
     }
