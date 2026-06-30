@@ -537,7 +537,7 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
   const bodyPts = [];
   const _bv = new THREE.Vector3();
   const shirtMeshes = [];
-  shirtG.scene.traverse((o) => { if (o.isMesh) shirtMeshes.push(o); });
+  shirtG.scene.traverse((o) => { if (o.isMesh && !/Mara/i.test(o.material && o.material.name || '')) shirtMeshes.push(o); });   // exclude the mannequin
   shirtMeshes.forEach((o) => {
     const ms = Array.isArray(o.material) ? o.material : [o.material];
     ms.forEach((m) => { if (/fabric|gingham/i.test(m.name || '') && fabricMats.indexOf(m) < 0) fabricMats.push(m); });
@@ -583,28 +583,7 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
     const mat = mesh.material;
     if (mat !== torsoMat) mat.roughness = 0.45;   // buttons: subtle sheen, not glass
     if ('specularIntensity' in mat) mat.specularIntensity = 0.2;
-    mat.customProgramCacheKey = () => 'fabricwind';
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = { value: 0 };
-      shader.uniforms.uSpin = { value: 0 };
-      shader.uniforms.uMinY = { value: bb.min.y };
-      shader.uniforms.uMaxY = { value: bb.max.y };
-      windUs.push(shader.uniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uSpin;\nuniform float uMinY;\nuniform float uMaxY;\nattribute float aFree;')
-        .replace('#include <begin_vertex>', `#include <begin_vertex>
-{
-  float w = 1.0 - smoothstep(uMinY, uMaxY, position.y);
-  w = w * w * aFree;
-  vec2 tangent = vec2(-position.z, position.x);
-  transformed.xz += tangent * (-uSpin) * 0.0675 * w;
-  float breeze = sin(uTime * 1.9 + position.y * 2.6 + position.x * 1.8) * 0.6
-               + sin(uTime * 3.1 + position.z * 3.4) * 0.4;
-  transformed.x += breeze * 0.035 * w;
-  transformed.z += cos(uTime * 2.4 + position.x * 2.2) * 0.022 * w;
-}`);
-    };
-    mat.needsUpdate = true;
+    mat.needsUpdate = true;   // wind disabled for now
     }
   }
   garment.add(root);
