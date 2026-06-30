@@ -34,9 +34,9 @@ const MADRAS = ASSET + 'fab-madras.png';   // scanned demo fabric
 const SWATCHES = [
   { name: 'denim',       data: ASSET + 'fab-denim.png',       normal: ASSET + 'fab-denim-n.png',       rough: ASSET + 'fab-denim-r.png' },
   { name: 'gingham',     data: ASSET + 'fab-gingham.png',     normal: ASSET + 'fab-gingham-n.png',     rough: ASSET + 'fab-gingham-r.png' },
-  { name: 'herringbone', data: ASSET + 'fab-herringbone.png', normal: ASSET + 'fab-herringbone-n.png', rough: ASSET + 'fab-herringbone-r.png' },
-  { name: 'plain',       data: ASSET + 'fab-plain.png',       normal: ASSET + 'fab-plain-n.png',       rough: ASSET + 'fab-plain-r.png' },
-  { name: 'sateen',      data: ASSET + 'fab-sateen.png',      normal: ASSET + 'fab-sateen-n.png',      rough: ASSET + 'fab-sateen-r.png' },
+  { name: 'houndstooth', data: ASSET + 'fab-houndstooth.png', normal: ASSET + 'fab-houndstooth-n.png', rough: ASSET + 'fab-houndstooth-r.png' },
+  { name: 'tartan',      data: ASSET + 'fab-tartan.png',      normal: ASSET + 'fab-tartan-n.png',      rough: ASSET + 'fab-tartan-r.png' },
+  { name: 'silk',        data: ASSET + 'fab-silk.png',        normal: ASSET + 'fab-silk-n.png',        rough: ASSET + 'fab-silk-r.png' },
   { name: 'madras',      data: ASSET + 'fab-madras.png',      normal: ASSET + 'fab-madras-n.png',      rough: ASSET + 'fab-madras-r.png' }
 ];
 
@@ -128,9 +128,9 @@ function mkLight(colour, intensity, x, y, z) {
   rig.add(L, L.target);
   return L;
 }
-mkLight(0xfff1e0, 0.40, -3.5, 4.5, 4.0);   // key: warm, high front-left
-mkLight(0xdce9ff, 0.10,  3.0, 2.5, 4.0);   // fill: cool, low front-right
-mkLight(0xffffff, 0.32,  0.5, 3.2, -5.5);  // rim: shoulder height behind, edge kiss not floodlight
+mkLight(0xffffff, 0.82,  2.5, 5.5, 3.0);   // key: match comparison
+mkLight(0xeaf2f0, 0.35, -3.0, 3.5, 1.5);   // fill: match comparison
+mkLight(0xffffff, 0.35,  0.0, 4.0, -4.0);  // rim: match comparison
 rig.visible = false;
 scene.add(rig);
 
@@ -290,8 +290,8 @@ screenMat.onBeforeCompile = (shader) => {
   vec4 ret = inReg > 0.5 ? texture2D(uRetTex, ruv) : vec4(0.0);
   diffuseColor.rgb = mix(diffuseColor.rgb, ret.rgb, ret.a * uRetOn);
   // directional circle: rides toward the scan centre, eases home on approach
-  vec3 retc = vec3(0.36, 0.866, 0.776);   // teal accent: reads on fabric AND dark screen
-  vec2 cc = vec2(0.5) + uRetOff;
+  vec3 retc = vec3(0.925, 0.953, 0.945);   // white
+  vec2 cc = vec2(0.5);   // static, centred
   float cd = distance(ruv, cc);
   float R = 0.205, ew = 0.012, lw = 0.05;
   float rInner = R - lw;
@@ -594,10 +594,10 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
     torsoMat.roughness = 0.85;
     fabricMats.forEach((m) => {
       m.side = THREE.DoubleSide; m.transparent = false; m.depthWrite = true; m.alphaTest = 0;
-      if ('envMapIntensity' in m) m.envMapIntensity = 0.22;          // room env -> specular, matches comparison shirt
+      if ('envMapIntensity' in m) m.envMapIntensity = 0.30;          // match comparison
       if ('sheen' in m) { m.sheen = 0.7; m.sheenRoughness = 0.7; m.sheenColor = new THREE.Color(0xffffff); }
       if (m.normalMap) m.normalScale.set(0.5, 0.5);
-      [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.anisotropy = 4; t._sc = true; t.needsUpdate = true; } });
+      [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.anisotropy = 8; t._sc = true; t.needsUpdate = true; } });
       m.needsUpdate = true;
     });
     // measure the fabric UV span so the swatch tile count is correct whatever the GLB's UV scale (unified 0-1 vs real-world)
@@ -725,7 +725,7 @@ mannbtn.addEventListener('click', () => {
   garment.visible = true; zoomEl.value = 80; syncZoom();
   rig.visible = true;
   sun.visible = false;        // hand the stage to the three-point rig
-  amb.intensity = 0.3;
+  amb.intensity = 0.05;
   garmentT = 0;
   viewMode = 1;
   zoomEl.classList.add('show');
@@ -752,12 +752,12 @@ const swatchesEl = document.getElementById('txs-swatches');
 const ghostsw = document.getElementById('txs-ghostsw');
 const texCache = {};
 function applySwatch(spec) {
-  const mkTex = (img, srgb) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.flipY = false; t.repeat.copy(swatchRepeat); t.anisotropy = 4; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
+  const mkTex = (img, srgb) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.flipY = false; t.repeat.copy(swatchRepeat); t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
   const set = (rec) => {
     for (const m of fabricMats) {
       if (rec.b) m.map = mkTex(rec.b, true);
       if (rec.n) { m.normalMap = mkTex(rec.n, false); m.normalScale.set(0.5, 0.5); }
-      if (rec.r) { m.roughnessMap = mkTex(rec.r, false); m.roughness = 0.82; }
+      if (rec.r) { m.roughnessMap = mkTex(rec.r, false); m.roughness = 1.0; }
       m.color.set(0xffffff);
       m.needsUpdate = true;
     }
@@ -1178,13 +1178,7 @@ function frame() {
   if (scrU) {
     scrU.uRetOn.value = reticle.visible ? 0.85 : 0;
     scrU.uFill.value = scrState.fill;
-    const dxp = -phone.position.x, dzp = -phone.position.z;   // vector toward the fabric centre (0,0)
-    const dlp = Math.hypot(dxp, dzp);
-    const tt = Math.min(1, dlp / RET_NORM);
-    const mag = RET_REACH * (tt * tt * (3 - 2 * tt));          // far -> square edge, near -> own centre
-    let ox = 0, oy = 0;
-    if (dlp > 1e-4) { ox = (dxp / dlp) * mag; oy = (dzp / dlp) * mag; }
-    scrU.uRetOff.value.set(ox * RET_SX, oy * RET_SY);
+    scrU.uRetOff.value.set(0, 0);   // reticle circle stays centred (directional guide disabled)
   }
   const rv = (garment.rotation.y - lastRotY) / Math.max(dt, 0.001);
   lastRotY = garment.rotation.y;
