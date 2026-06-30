@@ -553,6 +553,8 @@ function drawDrain(dtF) {
 // real shirt + mannequin model (Joshua's export), swatches target the FABRIC material
 const garment = new THREE.Group();
 const fabricMats = [];   // every fabric panel of the CLO shirt
+const SWATCH_REPEAT = 18;   // fabric tile count across the shirt's unified UVs - tune for check/weave size
+const swatchRepeat = new THREE.Vector2(SWATCH_REPEAT, SWATCH_REPEAT);
 let torsoMat = new THREE.MeshStandardMaterial({ color: 0xb9c4c2, roughness: 0.8 });
 function parseGlb(url) { return new GLTFLoader().loadAsync(url); }
 Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
@@ -577,20 +579,12 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
     const ms = Array.isArray(o.material) ? o.material : [o.material];
     ms.forEach((m) => { if (/fabric|gingham/i.test(m.name || '') && fabricMats.indexOf(m) < 0) fabricMats.push(m); });
   });
-  // CLO's fabric UVs are non-uniform + huge, so any texture mip-averages to a flat colour.
-  // Reproject the fabric panels cylindrically (around the body Y axis) -> clean, tileable UVs.
-  const CLOTH_CIRC = 10, CLOTH_VPU = 3.3;   // tiles around the body / tiles per world Y-unit (tune for check size)
-  const _cp = new THREE.Vector3();
-  shirtMeshes.forEach((mesh) => {
-    if (!/fabric|gingham/i.test(mesh.material && mesh.material.name || '')) return;
-    const pos = mesh.geometry.attributes.position;
-    const uv = new Float32Array(pos.count * 2);
-    for (let i = 0; i < pos.count; i++) {
-      _cp.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
-      uv[i * 2]     = (Math.atan2(_cp.z, _cp.x) / (Math.PI * 2)) * CLOTH_CIRC;
-      uv[i * 2 + 1] = _cp.y * CLOTH_VPU;
+  // mannequin: soft matte grey so it reads as a form, not a blown-white silhouette
+  shirtG.scene.traverse((o) => {
+    if (o.isMesh && /mara|mannequin|avatar|body|skin/i.test(o.material && o.material.name || '')) {
+      o.material = new THREE.MeshStandardMaterial({ color: 0x9aa0a3, roughness: 0.92, metalness: 0 });
+      if ('envMapIntensity' in o.material) o.material.envMapIntensity = 0.15;
     }
-    mesh.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   });
   const fabricMesh = shirtMeshes.find((o) => /fabric|gingham/i.test(o.material.name || '')) || shirtMeshes[0];
   if (fabricMesh) {
@@ -601,7 +595,7 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
       if ('envMapIntensity' in m) m.envMapIntensity = 0.22;          // room env -> specular, matches comparison shirt
       if ('sheen' in m) { m.sheen = 0.7; m.sheenRoughness = 0.7; m.sheenColor = new THREE.Color(0xffffff); }
       if (m.normalMap) m.normalScale.set(0.5, 0.5);
-      [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.repeat.multiplyScalar(1.25); t._sc = true; t.needsUpdate = true; } });
+      [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.repeat.multiplyScalar(1.25); t.anisotropy = 8; t._sc = true; t.needsUpdate = true; } });
       m.needsUpdate = true;
     });
     // shirt arrives plain: solid colour, NO fabric texture. swatches add texture on drag.
@@ -745,9 +739,9 @@ const swatchesEl = document.getElementById('txs-swatches');
 const ghostsw = document.getElementById('txs-ghostsw');
 const texCache = {};
 function applySwatch(spec) {
-  const mkTex = (img, srgb) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.flipY = false; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
+  const mkTex = (img, srgb) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.flipY = false; t.repeat.copy(swatchRepeat); t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
   const set = (rec) => {
-    for (const m of fabricMats) {                 // fresh textures: swapping .image on the GLB textures doesn't re-upload reliably
+    for (const m of fabricMats) {
       if (rec.b) m.map = mkTex(rec.b, true);
       if (rec.n) { m.normalMap = mkTex(rec.n, false); m.normalScale.set(0.5, 0.5); }
       if (rec.r) { m.roughnessMap = mkTex(rec.r, false); m.roughness = 0.82; }
