@@ -595,7 +595,7 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
     fabricMats.forEach((m) => {
       m.side = THREE.DoubleSide; m.transparent = false; m.depthWrite = true; m.alphaTest = 0;
       if ('envMapIntensity' in m) m.envMapIntensity = 0.30;          // match comparison
-      if ('sheen' in m) { m.sheen = 0.7; m.sheenRoughness = 0.7; m.sheenColor = new THREE.Color(0xffffff); }
+      if ('sheen' in m) { m.sheen = 0.2; m.sheenRoughness = 0.6; m.sheenColor = new THREE.Color(0xffffff); }   // low sheen: subtle fabric sheen, no collar/yoke bloom
       if (m.normalMap) m.normalScale.set(0.5, 0.5);
       [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.anisotropy = 8; t._sc = true; t.needsUpdate = true; } });
       m.needsUpdate = true;
