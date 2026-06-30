@@ -131,9 +131,22 @@ scene.add(rig);
 const tex = new THREE.TextureLoader().load(TARTAN);
 tex.colorSpace = THREE.SRGBColorSpace;
 tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+const fgeo = new THREE.PlaneGeometry(4, 4, 48, 48);
+(() => {
+  const p = fgeo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i);
+    const edge = Math.min(1, Math.max(0, (Math.hypot(x, y) - 0.55) / 1.15));   // ~flat centre, drapes toward edges
+    const e = edge * edge;
+    let z = (Math.sin(x * 1.6 + 0.7) * 0.05 + Math.cos(y * 1.3 - 0.4) * 0.06 + Math.sin((x + y) * 0.9) * 0.035) * e;
+    z += (Math.random() - 0.5) * 0.012 * edge;
+    p.setZ(i, z);
+  }
+  fgeo.computeVertexNormals();
+})();
 const fabric = new THREE.Mesh(
-  new THREE.PlaneGeometry(4, 4),
-  new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+  fgeo,
+  new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.95, metalness: 0 })
 );
 fabric.rotation.x = -Math.PI/2;
 scene.add(fabric);
@@ -354,7 +367,7 @@ function drawAnalyse() {
 
 const rainImg = new Image();
 rainImg.crossOrigin = 'anonymous';
-rainImg.src = SWATCHES[0].data;   // the clean tileable output, same as the shirt swatch
+rainImg.src = TARTAN;   // tartan — same fabric that's scanned
 const rfill = new Array(RCOLS).fill(0);          // revealed rows per column, from the bottom
 const rdrain = [];
 for (let i = 0; i < RCOLS; i++) rdrain.push(0.3 + Math.random() * 0.45);
