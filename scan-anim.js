@@ -553,7 +553,7 @@ function drawDrain(dtF) {
 // real shirt + mannequin model (Joshua's export), swatches target the FABRIC material
 const garment = new THREE.Group();
 const fabricMats = [];   // every fabric panel of the CLO shirt
-const SWATCH_TILES = 18;   // fabric tiles across the shirt (auto-scaled to the GLB's UV range, so it's robust to either UV convention)
+const SWATCH_TILES = 8;   // fabric tiles across the shirt (auto-scaled to the GLB's UV range, so it's robust to either UV convention)
 const swatchRepeat = new THREE.Vector2(SWATCH_TILES, SWATCH_TILES);
 let torsoMat = new THREE.MeshStandardMaterial({ color: 0xb9c4c2, roughness: 0.8 });
 function parseGlb(url) { return new GLTFLoader().loadAsync(url); }
@@ -575,9 +575,11 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
   const _bv = new THREE.Vector3();
   const shirtMeshes = [];
   shirtG.scene.traverse((o) => { if (o.isMesh && !/Mara/i.test(o.material && o.material.name || '')) shirtMeshes.push(o); });   // exclude the mannequin
+  const isFabricMesh = (o) => o.isMesh && /cloth/i.test(o.name || '') && !/button|hole|stitch|trim|binding|zip|elastic/i.test((o.material && o.material.name) || '');
   shirtMeshes.forEach((o) => {
+    if (!isFabricMesh(o)) return;
     const ms = Array.isArray(o.material) ? o.material : [o.material];
-    ms.forEach((m) => { if (/fabric|gingham/i.test(m.name || '') && fabricMats.indexOf(m) < 0) fabricMats.push(m); });
+    ms.forEach((m) => { if (fabricMats.indexOf(m) < 0) fabricMats.push(m); });
   });
   // mannequin: soft matte grey so it reads as a form, not a blown-white silhouette
   shirtG.scene.traverse((o) => {
@@ -586,7 +588,7 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
       if ('envMapIntensity' in o.material) o.material.envMapIntensity = 0.15;
     }
   });
-  const fabricMesh = shirtMeshes.find((o) => /fabric|gingham/i.test(o.material.name || '')) || shirtMeshes[0];
+  const fabricMesh = shirtMeshes.find(isFabricMesh) || shirtMeshes[0];
   if (fabricMesh) {
     torsoMat = fabricMesh.material;
     torsoMat.roughness = 0.85;
@@ -595,14 +597,14 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
       if ('envMapIntensity' in m) m.envMapIntensity = 0.22;          // room env -> specular, matches comparison shirt
       if ('sheen' in m) { m.sheen = 0.7; m.sheenRoughness = 0.7; m.sheenColor = new THREE.Color(0xffffff); }
       if (m.normalMap) m.normalScale.set(0.5, 0.5);
-      [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.anisotropy = 8; t._sc = true; t.needsUpdate = true; } });
+      [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.anisotropy = 4; t._sc = true; t.needsUpdate = true; } });
       m.needsUpdate = true;
     });
     // measure the fabric UV span so the swatch tile count is correct whatever the GLB's UV scale (unified 0-1 vs real-world)
     {
       let mn = Infinity, mx = -Infinity;
       for (const mesh of shirtMeshes) {
-        if (!/fabric|gingham/i.test(mesh.material && mesh.material.name || '')) continue;
+        if (!isFabricMesh(mesh)) continue;
         const uv = mesh.geometry.attributes.uv; if (!uv) continue;
         for (let i = 0; i < uv.count; i++) { const u = uv.getX(i), v = uv.getY(i); if (u < mn) mn = u; if (u > mx) mx = u; if (v < mn) mn = v; if (v > mx) mx = v; }
       }
@@ -750,7 +752,7 @@ const swatchesEl = document.getElementById('txs-swatches');
 const ghostsw = document.getElementById('txs-ghostsw');
 const texCache = {};
 function applySwatch(spec) {
-  const mkTex = (img, srgb) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.flipY = false; t.repeat.copy(swatchRepeat); t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
+  const mkTex = (img, srgb) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.flipY = false; t.repeat.copy(swatchRepeat); t.anisotropy = 4; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
   const set = (rec) => {
     for (const m of fabricMats) {
       if (rec.b) m.map = mkTex(rec.b, true);
