@@ -93,7 +93,7 @@ const camera = new THREE.PerspectiveCamera(40, VW/VH, 0.1, 50);
 camera.position.set(0, 8.5, 5.8);
 camera.lookAt(0, 0, -0.2);
 
-const amb = new THREE.AmbientLight(0xffffff, 0.45);
+const amb = new THREE.AmbientLight(0xffffff, 0.30);
 scene.add(amb);
 
 // soft radial floor: mid grey melting to nothing
@@ -115,7 +115,7 @@ floor.rotation.x = -Math.PI/2;
 floor.position.y = -0.012;
 floor.renderOrder = -1;
 scene.add(floor);
-const sun = new THREE.DirectionalLight(0xffffff, 0.85);
+const sun = new THREE.DirectionalLight(0xffffff, 0.55);
 sun.position.set(-3, 6, 2);
 scene.add(sun);
 
@@ -128,9 +128,9 @@ function mkLight(colour, intensity, x, y, z) {
   rig.add(L, L.target);
   return L;
 }
-mkLight(0xfff1e0, 0.60, -3.5, 4.5, 4.0);   // key: warm, high front-left
-mkLight(0xdce9ff, 0.18,  3.0, 2.5, 4.0);   // fill: cool, low front-right
-mkLight(0xffffff, 0.45,  0.5, 3.2, -5.5);  // rim: shoulder height behind, edge kiss not floodlight
+mkLight(0xfff1e0, 0.40, -3.5, 4.5, 4.0);   // key: warm, high front-left
+mkLight(0xdce9ff, 0.10,  3.0, 2.5, 4.0);   // fill: cool, low front-right
+mkLight(0xffffff, 0.32,  0.5, 3.2, -5.5);  // rim: shoulder height behind, edge kiss not floodlight
 rig.visible = false;
 scene.add(rig);
 
@@ -258,12 +258,12 @@ rtCam.rotation.x = -Math.PI/2;
 const retTex = (() => {
   const cv = document.createElement('canvas'); cv.width = cv.height = 256;
   const g = cv.getContext('2d');
-  g.strokeStyle = 'rgba(236,243,241,0.9)'; g.lineWidth = 6;
-  const L = 40, M = 28;
+  g.strokeStyle = 'rgba(236,243,241,0.95)'; g.lineWidth = 12; g.lineCap = 'round'; g.lineJoin = 'round';
+  const L = 44, M = 26;
   [[M,M,1,1],[256-M,M,-1,1],[M,256-M,1,-1],[256-M,256-M,-1,-1]].forEach(([x,y,sx,sy]) => {
     g.beginPath(); g.moveTo(x + L*sx, y); g.lineTo(x, y); g.lineTo(x, y + L*sy); g.stroke();
   });
-  g.beginPath(); g.arc(128,128,52,0,Math.PI*2); g.stroke();
+  // circle is drawn procedurally in-shader (it moves), so nothing baked here
   const t = new THREE.CanvasTexture(cv);
   t.flipY = false;
   return t;
@@ -278,21 +278,35 @@ screenMat.onBeforeCompile = (shader) => {
   shader.uniforms.uRetTex = { value: retTex };
   shader.uniforms.uRetOn = { value: 0 };
   shader.uniforms.uFill = { value: 0 };
+  shader.uniforms.uRetOff = { value: new THREE.Vector2(0, 0) };
   scrU = shader.uniforms;
   shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', '#include <common>\nuniform sampler2D uRetTex;\nuniform float uRetOn;\nuniform float uFill;')
+    .replace('#include <common>', '#include <common>\nuniform sampler2D uRetTex;\nuniform float uRetOn;\nuniform float uFill;\nuniform vec2 uRetOff;')
     .replace('#include <map_fragment>', `#include <map_fragment>
 {
   vec2 suv = vMapUv;
   vec2 ruv = (suv - 0.5) * vec2(1.0 / 0.705, 1.0 / 0.355) + 0.5;
-  vec4 ret = (ruv.x > 0.0 && ruv.x < 1.0 && ruv.y > 0.0 && ruv.y < 1.0) ? texture2D(uRetTex, ruv) : vec4(0.0);
+  float inReg = step(0.0, ruv.x) * step(ruv.x, 1.0) * step(0.0, ruv.y) * step(ruv.y, 1.0);
+  vec4 ret = inReg > 0.5 ? texture2D(uRetTex, ruv) : vec4(0.0);
   diffuseColor.rgb = mix(diffuseColor.rgb, ret.rgb, ret.a * uRetOn);
+  // directional circle: rides toward the scan centre, eases home on approach
+  vec3 retc = vec3(0.36, 0.866, 0.776);   // teal accent: reads on fabric AND dark screen
+  vec2 cc = vec2(0.5) + uRetOff;
+  float cd = distance(ruv, cc);
+  float R = 0.205, ew = 0.012, lw = 0.05;
+  float rInner = R - lw;
+  float ringBand = smoothstep(R + ew, R, cd) - smoothstep(rInner, rInner - ew, cd);
+  float disc = 1.0 - smoothstep(rInner - ew, rInner, cd);
+  diffuseColor.rgb = mix(diffuseColor.rgb, retc, disc * 0.5 * uRetOn * inReg);
+  diffuseColor.rgb = mix(diffuseColor.rgb, retc, ringBand * 1.0 * uRetOn * inReg);
   float fillOn = step(1.0 - uFill, suv.y);
   float ln = mod(floor(suv.y * 144.0), 2.0) < 1.0 ? 1.0 : 0.55;
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.36, 0.866, 0.776) * (0.7 + 0.3 * ln), fillOn * 0.34 * ln);
 }`);
 };
 
+// directional-reticle tuning: sign mapping (world x,z -> reticle u,v), reach, distance normaliser
+const RET_SX = 1, RET_SY = -1, RET_REACH = 0.26, RET_NORM = 2.5;
 // proxies keep the rest of the flow untouched
 const screen = { material: screenMat };
 const reticle = { visible: false };
@@ -569,13 +583,18 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
     torsoMat.roughness = 0.85;
     fabricMats.forEach((m) => {
       m.side = THREE.DoubleSide; m.transparent = false; m.depthWrite = true; m.alphaTest = 0;
-      if ('envMapIntensity' in m) m.envMapIntensity = 0.30;          // room env -> specular, matches comparison shirt
+      if ('envMapIntensity' in m) m.envMapIntensity = 0.22;          // room env -> specular, matches comparison shirt
       if ('sheen' in m) { m.sheen = 0.7; m.sheenRoughness = 0.7; m.sheenColor = new THREE.Color(0xffffff); }
       if (m.normalMap) m.normalScale.set(0.5, 0.5);
       [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.repeat.multiplyScalar(1.25); t._sc = true; t.needsUpdate = true; } });
       m.needsUpdate = true;
     });
-    applySwatch(SWATCHES[3]);   // shirt arrives in plain, not the baked gingham
+    // shirt arrives plain: solid colour, NO fabric texture. swatches add texture on drag.
+    fabricMats.forEach((m) => {
+      m.map = null; m.normalMap = null; m.roughnessMap = null;
+      m.color.set(0xc9cdcf); m.roughness = 0.80; m.metalness = 0;
+      m.needsUpdate = true;
+    });
     const CELL = 0.12;
     const grid = new Map();
     const gkey = (x, y, z) => x + ',' + y + ',' + z;
@@ -711,11 +730,12 @@ const swatchesEl = document.getElementById('txs-swatches');
 const ghostsw = document.getElementById('txs-ghostsw');
 const texCache = {};
 function applySwatch(spec) {
+  const mkTex = (img, srgb) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1.25, 1.25); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
   const set = (rec) => {
     for (const m of fabricMats) {
-      if (m.map && rec.b) { m.map.image = rec.b; m.map.colorSpace = THREE.SRGBColorSpace; m.map.needsUpdate = true; }
-      if (m.normalMap && rec.n) { m.normalMap.image = rec.n; m.normalMap.needsUpdate = true; m.normalScale.set(0.5, 0.5); }
-      if (m.roughnessMap && rec.r) { m.roughnessMap.image = rec.r; m.roughnessMap.needsUpdate = true; m.roughness = 0.82; }
+      if (rec.b) { if (m.map) { m.map.image = rec.b; m.map.colorSpace = THREE.SRGBColorSpace; m.map.needsUpdate = true; } else { m.map = mkTex(rec.b, true); } }
+      if (rec.n) { if (m.normalMap) { m.normalMap.image = rec.n; m.normalMap.needsUpdate = true; } else { m.normalMap = mkTex(rec.n, false); } m.normalScale.set(0.5, 0.5); }
+      if (rec.r) { if (m.roughnessMap) { m.roughnessMap.image = rec.r; m.roughnessMap.needsUpdate = true; } else { m.roughnessMap = mkTex(rec.r, false); } m.roughness = 0.82; }
       m.color.set(0xffffff);
       m.needsUpdate = true;
     }
@@ -1136,6 +1156,13 @@ function frame() {
   if (scrU) {
     scrU.uRetOn.value = reticle.visible ? 0.85 : 0;
     scrU.uFill.value = scrState.fill;
+    const dxp = -phone.position.x, dzp = -phone.position.z;   // vector toward the fabric centre (0,0)
+    const dlp = Math.hypot(dxp, dzp);
+    const tt = Math.min(1, dlp / RET_NORM);
+    const mag = RET_REACH * (tt * tt * (3 - 2 * tt));          // far -> square edge, near -> own centre
+    let ox = 0, oy = 0;
+    if (dlp > 1e-4) { ox = (dxp / dlp) * mag; oy = (dzp / dlp) * mag; }
+    scrU.uRetOff.value.set(ox * RET_SX, oy * RET_SY);
   }
   const rv = (garment.rotation.y - lastRotY) / Math.max(dt, 0.001);
   lastRotY = garment.rotation.y;
