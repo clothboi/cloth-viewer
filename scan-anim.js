@@ -795,6 +795,29 @@ function pointerToGround(e) {
   ray.ray.intersectPlane(groundPlane, hit);
   return hit;
 }
+
+function pointerToGroundXY(cx, cy) {
+  const r = HR(), sc = SCL();
+  pointer.x = (((cx - r.left) / sc.x) / VW) * 2 - 1;
+  pointer.y = -(((cy - r.top) / sc.y) / VH) * 2 + 1;
+  ray.setFromCamera(pointer, camera);
+  const hit = new THREE.Vector3();
+  ray.ray.intersectPlane(groundPlane, hit);
+  return hit;
+}
+// last known cursor (page-wide) so the phone follows the cursor anywhere on the slide, and can grab it on arrival
+let lastCX = innerWidth / 2, lastCY = innerHeight / 2;
+function aimPhoneAt(cx, cy) {
+  if (isTouch || scanned || !slideActive()) return;
+  const hit = pointerToGroundXY(cx, cy);
+  if (!hit) return;
+  if (!everDragged) { everDragged = true; screen.material.map = rt.texture; screen.material.needsUpdate = true; reticle.visible = true; }
+  dragging = true;
+  lastInteract = performance.now();
+  target.x = THREE.MathUtils.clamp(hit.x, -5, 5);
+  target.z = THREE.MathUtils.clamp(hit.z, -3.5, 3.5);
+}
+addEventListener('pointermove', (e) => { lastCX = e.clientX; lastCY = e.clientY; aimPhoneAt(e.clientX, e.clientY); }, { passive: true });
 canvas.addEventListener('pointerenter', () => { pointerOver = true; });
 canvas.addEventListener('pointerleave', () => { pointerOver = false; dragging = false; });
 canvas.addEventListener('pointerdown', (e) => {
@@ -934,7 +957,7 @@ function autoTick(dt) {
 const clock = new THREE.Clock();
 function frame() {
   const _live = inView && slideActive();
-  if (_live && !_wasLive) { loadT = performance.now(); lastInteract = performance.now(); }  // restart the demo timeline when the slide becomes active
+  if (_live && !_wasLive) { loadT = performance.now(); lastInteract = performance.now(); aimPhoneAt(lastCX, lastCY); }  // restart timeline + grab the cursor on arrival
   _wasLive = _live;
   if (!_live) { clock.getDelta(); requestAnimationFrame(frame); return; }
   const dt = Math.min(clock.getDelta(), 0.05);
