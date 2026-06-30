@@ -30,12 +30,12 @@ function boot() {
 const TARTAN = ASSET + 'scan-tartan.webp';
 
 const SWATCHES = [
-  { name: 'tartan', data: ASSET + 'sw-tartan.jpg', normal: ASSET + 'sw-tartan-n.webp' },
-  { name: 'houndstooth', data: ASSET + 'sw-houndstooth.jpg', normal: ASSET + 'sw-houndstooth-n.webp' },
-  { name: 'linen', data: ASSET + 'sw-linen.jpg', normal: ASSET + 'sw-linen-n.webp' },
-  { name: 'gingham', data: ASSET + 'sw-gingham.jpg', normal: ASSET + 'sw-gingham-n.webp' },
-  { name: 'madras', data: ASSET + 'sw-madras.jpg', normal: ASSET + 'sw-madras-n.webp' },
-  { name: 'denim', data: ASSET + 'sw-denim.jpg', normal: ASSET + 'sw-denim-n.webp' }
+  { name: 'denim',       data: ASSET + 'fab-denim.png',       normal: ASSET + 'fab-denim-n.png',       rough: ASSET + 'fab-denim-r.png' },
+  { name: 'gingham',     data: ASSET + 'fab-gingham.png',     normal: ASSET + 'fab-gingham-n.png',     rough: ASSET + 'fab-gingham-r.png' },
+  { name: 'herringbone', data: ASSET + 'fab-herringbone.png', normal: ASSET + 'fab-herringbone-n.png', rough: ASSET + 'fab-herringbone-r.png' },
+  { name: 'plain',       data: ASSET + 'fab-plain.png',       normal: ASSET + 'fab-plain-n.png',       rough: ASSET + 'fab-plain-r.png' },
+  { name: 'sateen',      data: ASSET + 'fab-sateen.png',      normal: ASSET + 'fab-sateen-n.png',      rough: ASSET + 'fab-sateen-r.png' },
+  { name: 'madras',      data: ASSET + 'fab-madras.png',      normal: ASSET + 'fab-madras-n.png',      rough: ASSET + 'fab-madras-r.png' }
 ];
 
 const head = document.getElementById('txs-head');
@@ -517,11 +517,12 @@ function drawDrain(dtF) {
 
 // real shirt + mannequin model (Joshua's export), swatches target the FABRIC material
 const garment = new THREE.Group();
+const fabricMats = [];   // every fabric panel of the CLO shirt
 let torsoMat = new THREE.MeshStandardMaterial({ color: 0xb9c4c2, roughness: 0.8 });
 function parseGlb(url) { return new GLTFLoader().loadAsync(url); }
-Promise.all([parseGlb(ASSET + 'shirt.glb'), parseGlb(ASSET + 'mannequin.glb')]).then(([shirtG, mannG]) => {
+Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
   const root = new THREE.Group();
-  root.add(mannG.scene, shirtG.scene);
+  root.add(shirtG.scene);
   const box = new THREE.Box3().setFromObject(root);
   const size = box.getSize(new THREE.Vector3());
   root.scale.setScalar(3.9 / size.y);
@@ -532,25 +533,23 @@ Promise.all([parseGlb(ASSET + 'shirt.glb'), parseGlb(ASSET + 'mannequin.glb')]).
   root.position.y -= box.min.y;
   root.updateMatrixWorld(true);
 
-  // mannequin surface points for the proximity field
+  // mannequin dropped -> empty proximity field, so the wind mask is purely height-based (standalone style)
   const bodyPts = [];
   const _bv = new THREE.Vector3();
-  mannG.scene.traverse((o) => {
-    if (!o.isMesh) return;
-    o.material.roughness = 0.62;            // matte studio mannequin, not wet plastic
-    if ('specularIntensity' in o.material) o.material.specularIntensity = 0.35;
-    const pos = o.geometry.attributes.position;
-    for (let i = 0; i < pos.count; i += 3) {
-      _bv.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
-      bodyPts.push(_bv.x, _bv.y, _bv.z);
-    }
-  });
   const shirtMeshes = [];
   shirtG.scene.traverse((o) => { if (o.isMesh) shirtMeshes.push(o); });
-  const fabricMesh = shirtMeshes.find((o) => (o.material.name || '').includes('FABRIC')) || shirtMeshes[0];
+  shirtMeshes.forEach((o) => {
+    const ms = Array.isArray(o.material) ? o.material : [o.material];
+    ms.forEach((m) => { if (/fabric|gingham/i.test(m.name || '') && fabricMats.indexOf(m) < 0) fabricMats.push(m); });
+  });
+  const fabricMesh = shirtMeshes.find((o) => /fabric|gingham/i.test(o.material.name || '')) || shirtMeshes[0];
   if (fabricMesh) {
     torsoMat = fabricMesh.material;
     torsoMat.roughness = 0.85;
+    fabricMats.forEach((m) => {
+      m.side = THREE.DoubleSide; m.transparent = false; m.depthWrite = true; m.alphaTest = 0;
+      [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.repeat.multiplyScalar(1.25); t._sc = true; t.needsUpdate = true; } });
+    });
     const CELL = 0.12;
     const grid = new Map();
     const gkey = (x, y, z) => x + ',' + y + ',' + z;
@@ -707,28 +706,21 @@ const swatchesEl = document.getElementById('txs-swatches');
 const ghostsw = document.getElementById('txs-ghostsw');
 const texCache = {};
 function applySwatch(spec) {
-  const set = (pair) => {
-    const t = pair.t;
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(5, 5);
-    torsoMat.map = t;
-    if (pair.n) {
-      pair.n.wrapS = pair.n.wrapT = THREE.RepeatWrapping;
-      pair.n.repeat.set(5, 5);
-      torsoMat.normalMap = pair.n;
-      torsoMat.normalScale.set(1, 1);
-    } else {
-      torsoMat.normalMap = null;
+  const set = (rec) => {
+    for (const m of fabricMats) {
+      if (m.map && rec.b) { m.map.image = rec.b; m.map.colorSpace = THREE.SRGBColorSpace; m.map.needsUpdate = true; }
+      if (m.normalMap && rec.n) { m.normalMap.image = rec.n; m.normalMap.needsUpdate = true; m.normalScale.set(1, 1); }
+      if (m.roughnessMap && rec.r) { m.roughnessMap.image = rec.r; m.roughnessMap.needsUpdate = true; m.roughness = 1.0; }
+      m.color.set(0xffffff);
+      m.needsUpdate = true;
     }
-    torsoMat.color.set(0xffffff);
-    torsoMat.needsUpdate = true;
   };
   if (texCache[spec.name]) { set(texCache[spec.name]); return; }
   const loader = new THREE.TextureLoader();
   loader.load(spec.data, (t) => {
-    if (!spec.normal) { texCache[spec.name] = { t }; set(texCache[spec.name]); return; }
-    loader.load(spec.normal, (n) => { texCache[spec.name] = { t, n }; set(texCache[spec.name]); });
+    const fin = (n, r) => { texCache[spec.name] = { b: t.image, n: n && n.image, r: r && r.image }; set(texCache[spec.name]); };
+    if (!spec.normal) return fin(null, null);
+    loader.load(spec.normal, (n) => { if (!spec.rough) return fin(n, null); loader.load(spec.rough, (r) => fin(n, r)); });
   });
 }
 let swDrag = null;
