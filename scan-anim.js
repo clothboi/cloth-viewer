@@ -856,6 +856,7 @@ const qTarget = new THREE.Quaternion().setFromUnitVectors(
 const ghostcur = document.getElementById('txs-ghostcur');
 const auto = { on: false, done: false, step: '', x: 0, y: 0, tx: 0, ty: 0, wait: 0 };
 function startAuto() {
+  return;   // disabled: phone follows cursor only
   auto.on = true;
   auto.x = VW * 0.68; auto.y = VH * 0.35;
   auto.step = 'toPhone';
@@ -980,7 +981,7 @@ function frame() {
   let vib = 0;
   if (!everDragged) {
     const idle = (performance.now() - lastInteract) / 1000;
-    if (((isTouch && idle > 1) || (!isTouch && idle > 4 && !pointerOver)) && !auto.on && !auto.done) startAuto();   // auto-play if no interaction (mobile sooner)
+    void idle;   // auto-demo disabled — phone follows the cursor only (no centre auto-scan)
     drawDragMe(false);   // steady screen, no attract flashing/rumble
   }
   const swayX = dragging ? Math.sin(now * 1.7) * 0.012 : 0;
