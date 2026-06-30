@@ -577,6 +577,21 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
     const ms = Array.isArray(o.material) ? o.material : [o.material];
     ms.forEach((m) => { if (/fabric|gingham/i.test(m.name || '') && fabricMats.indexOf(m) < 0) fabricMats.push(m); });
   });
+  // CLO's fabric UVs are non-uniform + huge, so any texture mip-averages to a flat colour.
+  // Reproject the fabric panels cylindrically (around the body Y axis) -> clean, tileable UVs.
+  const CLOTH_CIRC = 10, CLOTH_VPU = 3.3;   // tiles around the body / tiles per world Y-unit (tune for check size)
+  const _cp = new THREE.Vector3();
+  shirtMeshes.forEach((mesh) => {
+    if (!/fabric|gingham/i.test(mesh.material && mesh.material.name || '')) return;
+    const pos = mesh.geometry.attributes.position;
+    const uv = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+      _cp.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+      uv[i * 2]     = (Math.atan2(_cp.z, _cp.x) / (Math.PI * 2)) * CLOTH_CIRC;
+      uv[i * 2 + 1] = _cp.y * CLOTH_VPU;
+    }
+    mesh.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  });
   const fabricMesh = shirtMeshes.find((o) => /fabric|gingham/i.test(o.material.name || '')) || shirtMeshes[0];
   if (fabricMesh) {
     torsoMat = fabricMesh.material;
@@ -730,12 +745,12 @@ const swatchesEl = document.getElementById('txs-swatches');
 const ghostsw = document.getElementById('txs-ghostsw');
 const texCache = {};
 function applySwatch(spec) {
-  const mkTex = (img, srgb) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1.25, 1.25); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
+  const mkTex = (img, srgb) => { const t = new THREE.Texture(img); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.flipY = false; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
   const set = (rec) => {
-    for (const m of fabricMats) {
-      if (rec.b) { if (m.map) { m.map.image = rec.b; m.map.colorSpace = THREE.SRGBColorSpace; m.map.needsUpdate = true; } else { m.map = mkTex(rec.b, true); } }
-      if (rec.n) { if (m.normalMap) { m.normalMap.image = rec.n; m.normalMap.needsUpdate = true; } else { m.normalMap = mkTex(rec.n, false); } m.normalScale.set(0.5, 0.5); }
-      if (rec.r) { if (m.roughnessMap) { m.roughnessMap.image = rec.r; m.roughnessMap.needsUpdate = true; } else { m.roughnessMap = mkTex(rec.r, false); } m.roughness = 0.82; }
+    for (const m of fabricMats) {                 // fresh textures: swapping .image on the GLB textures doesn't re-upload reliably
+      if (rec.b) m.map = mkTex(rec.b, true);
+      if (rec.n) { m.normalMap = mkTex(rec.n, false); m.normalScale.set(0.5, 0.5); }
+      if (rec.r) { m.roughnessMap = mkTex(rec.r, false); m.roughness = 0.82; }
       m.color.set(0xffffff);
       m.needsUpdate = true;
     }
