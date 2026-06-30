@@ -553,8 +553,8 @@ function drawDrain(dtF) {
 // real shirt + mannequin model (Joshua's export), swatches target the FABRIC material
 const garment = new THREE.Group();
 const fabricMats = [];   // every fabric panel of the CLO shirt
-const SWATCH_REPEAT = 18;   // fabric tile count across the shirt's unified UVs - tune for check/weave size
-const swatchRepeat = new THREE.Vector2(SWATCH_REPEAT, SWATCH_REPEAT);
+const SWATCH_TILES = 18;   // fabric tiles across the shirt (auto-scaled to the GLB's UV range, so it's robust to either UV convention)
+const swatchRepeat = new THREE.Vector2(SWATCH_TILES, SWATCH_TILES);
 let torsoMat = new THREE.MeshStandardMaterial({ color: 0xb9c4c2, roughness: 0.8 });
 function parseGlb(url) { return new GLTFLoader().loadAsync(url); }
 Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
@@ -595,9 +595,20 @@ Promise.all([parseGlb(ASSET + 'shirt.glb')]).then(([shirtG]) => {
       if ('envMapIntensity' in m) m.envMapIntensity = 0.22;          // room env -> specular, matches comparison shirt
       if ('sheen' in m) { m.sheen = 0.7; m.sheenRoughness = 0.7; m.sheenColor = new THREE.Color(0xffffff); }
       if (m.normalMap) m.normalScale.set(0.5, 0.5);
-      [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.repeat.multiplyScalar(1.25); t.anisotropy = 8; t._sc = true; t.needsUpdate = true; } });
+      [m.map, m.normalMap, m.roughnessMap].forEach((t) => { if (t && !t._sc) { t.anisotropy = 8; t._sc = true; t.needsUpdate = true; } });
       m.needsUpdate = true;
     });
+    // measure the fabric UV span so the swatch tile count is correct whatever the GLB's UV scale (unified 0-1 vs real-world)
+    {
+      let mn = Infinity, mx = -Infinity;
+      for (const mesh of shirtMeshes) {
+        if (!/fabric|gingham/i.test(mesh.material && mesh.material.name || '')) continue;
+        const uv = mesh.geometry.attributes.uv; if (!uv) continue;
+        for (let i = 0; i < uv.count; i++) { const u = uv.getX(i), v = uv.getY(i); if (u < mn) mn = u; if (u > mx) mx = u; if (v < mn) mn = v; if (v > mx) mx = v; }
+      }
+      const span = Math.max(0.001, mx - mn);
+      swatchRepeat.setScalar(SWATCH_TILES / span);
+    }
     // shirt arrives plain: solid colour, NO fabric texture. swatches add texture on drag.
     fabricMats.forEach((m) => {
       m.map = null; m.normalMap = null; m.roughnessMap = null;
