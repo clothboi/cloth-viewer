@@ -238,12 +238,14 @@ function init(app) {
   // ---------- render only while on-screen ----------
   let visible = true;
   new IntersectionObserver(e => { visible = e[0].isIntersecting; }, { threshold: 0 }).observe(app);
+  const slideEl = app.closest('section[data-label]');
+  const slideActive = () => !slideEl || slideEl.hasAttribute('data-deck-active');
 
   const clock = new THREE.Clock();
   let windT = 0;
   function tick() {
     requestAnimationFrame(tick);
-    if (!visible) return;
+    if (!visible || !slideActive() || document.hidden) { clock.getDelta(); return; }
     const dt = clock.getDelta();
     windT += dt;
     windA.value = windT;
