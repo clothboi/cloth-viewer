@@ -924,8 +924,8 @@ const qTarget = new THREE.Quaternion().setFromUnitVectors(
 const ghostcur = document.getElementById('txs-ghostcur');
 const auto = { on: false, done: false, step: '', x: 0, y: 0, tx: 0, ty: 0, wait: 0 };
 function startAuto() {
-  return;   // disabled: phone follows cursor only
-  auto.on = true;
+  // touch autoplay: no cursor to follow on mobile/tablet, so a ghost cursor drives the whole flow
+  auto.on = true; auto.done = false;
   auto.x = VW * 0.68; auto.y = VH * 0.35;
   auto.step = 'toPhone';
   ghostcur.style.opacity = '1';
@@ -1028,6 +1028,8 @@ const clock = new THREE.Clock();
 function frame() {
   const _live = inView && slideActive();
   if (_live && !_wasLive) { loadT = performance.now(); lastInteract = performance.now(); if (hasCursor) aimPhoneAt(lastCX, lastCY, true); }  // restart timeline + grab last-known cursor (position only)
+  // touch devices have no cursor to drive the demo: kick off the autoplay once the slide is live
+  if (_live && isTouch && !auto.on && !auto.done && !scanned) startAuto();
   _wasLive = _live;
   if (!_live) { clock.getDelta(); requestAnimationFrame(frame); return; }
   const dt = Math.min(clock.getDelta(), 0.05);
