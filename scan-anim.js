@@ -216,6 +216,7 @@ const wash = new THREE.Mesh(
 wash.rotation.x = -Math.PI/2;
 wash.position.y = 0.011;
 scene.add(wash);
+corners.visible = false; aim.visible = false; wash.visible = false;   // scan target hidden on the fabric; all feedback lives on the phone screen
 
 let frameSize = 0.7;          // half-width of the bracket square
 function layoutCorners(s) {
@@ -270,38 +271,34 @@ const retTex = (() => {
 })();
 
 // one material runs the whole phone OS: content map + reticle + scan-glow composited in-shader
-const scrState = { fill: 0 };
+const scrState = { fill: 0, scan: 0 };
 let scrU = null;
 const screenMat = new THREE.MeshBasicMaterial({ map: dragTex });
 screenMat.customProgramCacheKey = () => 'phonescreen';
 screenMat.onBeforeCompile = (shader) => {
-  shader.uniforms.uRetTex = { value: retTex };
   shader.uniforms.uRetOn = { value: 0 };
   shader.uniforms.uFill = { value: 0 };
-  shader.uniforms.uRetOff = { value: new THREE.Vector2(0, 0) };
+  shader.uniforms.uScan = { value: 0 };
   scrU = shader.uniforms;
   shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', '#include <common>\nuniform sampler2D uRetTex;\nuniform float uRetOn;\nuniform float uFill;\nuniform vec2 uRetOff;')
+    .replace('#include <common>', '#include <common>\nuniform float uRetOn;\nuniform float uFill;\nuniform float uScan;')
     .replace('#include <map_fragment>', `#include <map_fragment>
 {
   vec2 suv = vMapUv;
-  vec2 ruv = (suv - 0.5) * vec2(1.0 / 0.705, 1.0 / 0.355) + 0.5;
-  float inReg = step(0.0, ruv.x) * step(ruv.x, 1.0) * step(0.0, ruv.y) * step(ruv.y, 1.0);
-  vec4 ret = inReg > 0.5 ? texture2D(uRetTex, ruv) : vec4(0.0);
-  diffuseColor.rgb = mix(diffuseColor.rgb, ret.rgb, ret.a * uRetOn);
-  // directional circle: rides toward the scan centre, eases home on approach
-  vec3 retc = vec3(0.925, 0.953, 0.945);   // white
-  vec2 cc = vec2(0.5);   // static, centred
-  float cd = distance(ruv, cc);
-  float R = 0.205, ew = 0.012, lw = 0.05;
-  float rInner = R - lw;
-  float ringBand = smoothstep(R + ew, R, cd) - smoothstep(rInner, rInner - ew, cd);
-  float disc = 1.0 - smoothstep(rInner - ew, rInner, cd);
-  diffuseColor.rgb = mix(diffuseColor.rgb, retc, disc * 0.5 * uRetOn * inReg);
-  diffuseColor.rgb = mix(diffuseColor.rgb, retc, ringBand * 1.0 * uRetOn * inReg);
+  vec3 grn = vec3(0.36, 0.866, 0.776);
+  // corner brackets grow out to the phone-screen edges as the scan builds
+  vec2 f = vec2(0.5) - abs(suv - vec2(0.5));   // 0 at edges, 0.5 at centre
+  float m = mix(0.34, 0.04, uScan);            // corner inset shrinks -> brackets reach the edges
+  float arm = mix(0.05, 0.22, uScan);          // arm length grows
+  float th = 0.016;
+  float vArm = step(m, f.y) * step(f.y, m + arm) * (1.0 - smoothstep(th, th + 0.006, abs(f.x - m)));
+  float hArm = step(m, f.x) * step(f.x, m + arm) * (1.0 - smoothstep(th, th + 0.006, abs(f.y - m)));
+  float bracket = clamp(vArm + hArm, 0.0, 1.0);
+  diffuseColor.rgb = mix(diffuseColor.rgb, grn, bracket * uRetOn);
+  // green scan fill, bottom-up, caps at 70% (uFill maxes at 0.7)
   float fillOn = step(1.0 - uFill, suv.y);
   float ln = mod(floor(suv.y * 144.0), 2.0) < 1.0 ? 1.0 : 0.55;
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.36, 0.866, 0.776) * (0.7 + 0.3 * ln), fillOn * 0.34 * ln);
+  diffuseColor.rgb = mix(diffuseColor.rgb, grn * (0.7 + 0.3 * ln), fillOn * 0.4 * ln);
 }`);
 };
 
@@ -1072,18 +1069,14 @@ function frame() {
   }
 
   // hold-to-scan: corners grow with hold time, 2s = full; leaving early resets
-  const over = Math.hypot(phone.position.x, phone.position.z) < 0.18;   // circles overlapping, small wiggle room
+  const over = Math.hypot(phone.position.x, phone.position.z) < 1.0;   // large invisible target (~half the fabric width): roughly centred starts the scan
   if (!scanned) {
     if (over) scanT += dt;
     else scanT = Math.max(0, scanT - dt * 3);
     const prog = Math.min(1, scanT / 2);
     const eased = prog * prog * (3 - 2 * prog);
-    frameSize = 0.7 + eased * (2.0 - 0.7);
-    layoutCorners(frameSize);
-    cornerMat.opacity = over ? 0.6 + Math.sin(performance.now() / 90) * 0.35 : 0.85;
-    wash.material.opacity = Math.min(1, eased * 1.6);   // invisible until the scan starts
-    aim.material.opacity = over ? 1.0 : 0.75;
-    setGlowFill(eased);
+    scrState.scan = eased;            // phone-screen reticle corners grow toward the edges
+    setGlowFill(eased * 0.7);         // green fill tops out at 70% at full scan
     if (prog >= 1) {
       scanned = true;
       phase = 1;
@@ -1178,9 +1171,9 @@ function frame() {
 
   // cloth uniforms: time + smoothed spin velocity
   if (scrU) {
-    scrU.uRetOn.value = reticle.visible ? 0.85 : 0;
+    scrU.uRetOn.value = reticle.visible ? 1.0 : 0;
     scrU.uFill.value = scrState.fill;
-    scrU.uRetOff.value.set(0, 0);   // reticle circle stays centred (directional guide disabled)
+    scrU.uScan.value = scrState.scan;
   }
   const rv = (garment.rotation.y - lastRotY) / Math.max(dt, 0.001);
   lastRotY = garment.rotation.y;
