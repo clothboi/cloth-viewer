@@ -1221,6 +1221,24 @@ new IntersectionObserver((en) => {
   if (inView && !was) lastInteract = performance.now();
 }, { threshold: 0.2 }).observe(host);
 
+// ---------- temporary on-device diagnostic: load the page with ?txdebug=1 ----------
+if (location.search.indexOf('txdebug') > -1) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:absolute;left:0;top:0;z-index:99;padding:8px 10px;background:rgba(0,0,0,.85);color:#3f6;font:11px/1.45 ui-monospace,Menlo,monospace;white-space:pre;pointer-events:none';
+  host.appendChild(d);
+  setInterval(() => {
+    const r = host.getBoundingClientRect();
+    d.textContent = [
+      'host  ' + host.clientWidth + ' x ' + host.clientHeight,
+      'rect  top ' + Math.round(r.top) + '  bot ' + Math.round(r.bottom) + '  vh ' + window.innerHeight,
+      'view  inView ' + inView + '  slideActive ' + slideActive(),
+      'touch isTouch ' + isTouch,
+      'auto  on ' + auto.on + '  done ' + auto.done + '  step ' + (auto.step || '-'),
+      'scan  scanned ' + (typeof scanned !== 'undefined' ? scanned : 'n/a')
+    ].join('\n');
+  }, 500);
+}
+
 }
 if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot);
 else boot();

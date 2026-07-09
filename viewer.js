@@ -17,7 +17,7 @@ function init(app) {
 
   // ---------- overlay UI (scoped) ----------
   const css = `
-  .txc-canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  .txc-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab}
   .txc-canvas.txc-drag{cursor:grabbing}
   .txc-label{position:absolute;transform:translate(-50%,0);text-align:center;font-family:'Inter',system-ui,sans-serif;font-weight:600;font-size:clamp(12px,1.4vw,17px);letter-spacing:.02em;color:#F3EFE7;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .5s}
   .txc-label .txc-sub{display:block;margin-top:2px;font-weight:400;font-size:.72em;color:rgba(243,239,231,.55)}
@@ -252,7 +252,10 @@ function init(app) {
 
   // ---------- sizing ----------
   function resize() {
-    const w = app.clientWidth || 600, h = app.clientHeight || 400;
+    const w = app.clientWidth || 600;
+    // canvas is now position:absolute so it cannot inflate the host; this clamp is a belt-and-braces
+    // guard so a runaway host height can never allocate a giant drawing buffer
+    const h = Math.max(240, Math.min(app.clientHeight || 400, Math.round(window.innerHeight * 1.2)));
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDPR));
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -310,6 +313,7 @@ function init(app) {
       _fr.setFromProjectionMatrix(_mx);
       const L = [
         'app   ' + app.clientWidth + ' x ' + app.clientHeight + '  dpr ' + renderer.getPixelRatio().toFixed(2),
+        'cvs   css ' + canvas.clientWidth + 'x' + canvas.clientHeight + '  buf ' + canvas.width + 'x' + canvas.height,
         'cam   aspect ' + camera.aspect.toFixed(3) + '  z ' + camera.position.z.toFixed(2) + '  far ' + camera.far,
         'fit   fitDist ' + fitDist.toFixed(2) + '  stacked ' + stacked + '  shirtW ' + shirtWidth.toFixed(3),
         'draw  calls ' + renderer.info.render.calls + '  tris ' + renderer.info.render.triangles,
