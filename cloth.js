@@ -29,7 +29,7 @@
 
     var box=d.createElement('div');
     box.id='tx-cloth';
-    box.style.cssText='position:absolute;top:0;left:0;width:100%;height:100vh;pointer-events:none;z-index:7;overflow:hidden';
+    box.style.cssText='position:absolute;top:0;left:0;width:100%;height:100lvh;pointer-events:none;z-index:7;overflow:hidden';
     d.body.appendChild(box);
 
     function makeVideo(src,poster){
@@ -111,7 +111,15 @@
         box.appendChild(w);
       });
     }
-    var RT;addEventListener('resize',function(){clearTimeout(RT);RT=setTimeout(build,200);},{passive:true});
+    // Mobile fires `resize` on every URL-bar collapse during a scroll. build() re-lays out
+    // every blob, so re-running it there made the background visibly reshuffle mid-scroll.
+    var RT,lastW=innerWidth,lastH=innerHeight;
+    addEventListener('resize',function(){
+      var w=innerWidth,h=innerHeight;
+      if(w===lastW&&Math.abs(h-lastH)<150)return;   // browser chrome, not a real resize
+      lastW=w;lastH=h;
+      clearTimeout(RT);RT=setTimeout(build,200);
+    },{passive:true});
     build();
   }
   if(document.body)I();else addEventListener('DOMContentLoaded',I);

@@ -23,7 +23,7 @@ function init(app) {
   .txc-label .txc-sub{display:block;margin-top:2px;font-weight:400;font-size:.72em;color:rgba(243,239,231,.55)}
   .txc-label.txc-seam{color:#1D9E75}
   .txc-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);font-family:'Inter',system-ui,sans-serif;font-size:12px;color:rgba(243,239,231,.5);pointer-events:none;opacity:0;transition:opacity .5s}
-  .txc-panel{position:absolute;right:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 9px;border-radius:999px;background:rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(243,239,231,.18);opacity:0;transition:opacity .5s}
+  .txc-panel{position:absolute;right:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:10px;padding:3px;border-radius:999px;background:rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(243,239,231,.18);opacity:0;transition:opacity .5s}
   .txc-panel span{font-size:12px;color:rgba(243,239,231,.55);user-select:none}
   /* rotate rather than writing-mode/slider-vertical: the native vertical range is inconsistent
      across Chrome <122 and Safari, a rotated horizontal track behaves identically everywhere */
