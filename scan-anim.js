@@ -29,15 +29,15 @@ function boot() {
 
 
 const TARTAN = ASSET + 'scan-tartan.webp';
-const MADRAS = ASSET + 'fab-madras.png';   // scanned demo fabric
+const MADRAS = ASSET + 'fab-madras.webp';   // scanned demo fabric
 
 const SWATCHES = [
-  { name: 'denim',       data: ASSET + 'fab-denim.png',       normal: ASSET + 'fab-denim-n.png',       rough: ASSET + 'fab-denim-r.png' },
-  { name: 'gingham',     data: ASSET + 'fab-gingham.png',     normal: ASSET + 'fab-gingham-n.png',     rough: ASSET + 'fab-gingham-r.png' },
-  { name: 'houndstooth', data: ASSET + 'fab-houndstooth.png', normal: ASSET + 'fab-houndstooth-n.png', rough: ASSET + 'fab-houndstooth-r.png' },
-  { name: 'tartan',      data: ASSET + 'fab-tartan.png',      normal: ASSET + 'fab-tartan-n.png',      rough: ASSET + 'fab-tartan-r.png' },
-  { name: 'silk',        data: ASSET + 'fab-silk.png',        normal: ASSET + 'fab-silk-n.png',        rough: ASSET + 'fab-silk-r.png' },
-  { name: 'madras',      data: ASSET + 'fab-madras.png',      normal: ASSET + 'fab-madras-n.png',      rough: ASSET + 'fab-madras-r.png' }
+  { name: 'denim',       data: ASSET + 'fab-denim.webp',       normal: ASSET + 'fab-denim-n.webp',       rough: ASSET + 'fab-denim-r.webp' },
+  { name: 'gingham',     data: ASSET + 'fab-gingham.webp',     normal: ASSET + 'fab-gingham-n.webp',     rough: ASSET + 'fab-gingham-r.webp' },
+  { name: 'houndstooth', data: ASSET + 'fab-houndstooth.webp', normal: ASSET + 'fab-houndstooth-n.webp', rough: ASSET + 'fab-houndstooth-r.webp' },
+  { name: 'tartan',      data: ASSET + 'fab-tartan.webp',      normal: ASSET + 'fab-tartan-n.webp',      rough: ASSET + 'fab-tartan-r.webp' },
+  { name: 'silk',        data: ASSET + 'fab-silk.webp',        normal: ASSET + 'fab-silk-n.webp',        rough: ASSET + 'fab-silk-r.webp' },
+  { name: 'madras',      data: ASSET + 'fab-madras.webp',      normal: ASSET + 'fab-madras-n.webp',      rough: ASSET + 'fab-madras-r.webp' }
 ];
 
 const head = document.getElementById('txs-head');

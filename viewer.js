@@ -44,8 +44,20 @@ function init(app) {
   const loadEl = document.createElement('div'); loadEl.className = 'txc-load'; loadEl.textContent = 'Loading…'; app.appendChild(loadEl);
 
   // ---------- renderer / scene ----------
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Two three.js renderers share this page (scan-anim is the other). Mobile GPUs run out of
+  // memory with MSAA + 2x DPR on both, and the lost context is silent, so trim + surface it.
+  const lowPower = Math.min(window.innerWidth, window.innerHeight) < 700;
+  const maxDPR = lowPower ? 1.5 : 2;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !lowPower, alpha: true, powerPreference: lowPower ? 'default' : 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDPR));
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    console.error('[textyl-comparison] WebGL context lost (likely GPU memory)');
+    const msg = document.createElement('div');
+    msg.className = 'txc-load';
+    msg.textContent = '3D preview unavailable on this device';
+    app.appendChild(msg);
+  }, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.useLegacyLights = true;   // r155+ changed light units; restore the r136 scale the standalone was tuned in (set before PMREM env)
@@ -158,8 +170,8 @@ function init(app) {
 
   Promise.all([
     loadGLB(ASSET('default.glb')), loadGLB(ASSET('seamless.glb')),
-    loadImg(ASSET('madras_input.png')), loadImg(ASSET('madras_base.png')),
-    loadImg(ASSET('madras_normal.png')), loadImg(ASSET('madras_rough.png'))
+    loadImg(ASSET('madras_input.webp')), loadImg(ASSET('madras_base.webp')),
+    loadImg(ASSET('madras_normal.webp')), loadImg(ASSET('madras_rough.webp'))
   ]).then(([a, b, defBase, seamBase, seamNormal, seamRough]) => {
     const gA = makeShirt(a, windA), gB = makeShirt(b, windB);
     retexture(a, { base: defBase });                                            // Default <- raw input
@@ -176,10 +188,19 @@ function init(app) {
 
   // ---------- camera framing + zoom (default = most zoomed-out; zoom in converges) ----------
   let fitDist = 6, zoomT = 0;
-  const DX_OUT = 0.625, DX_IN = 0.50;
+  let stacked = false;                  // narrow / portrait canvases stack the shirts vertically
+  const DX_OUT = 0.625, DX_IN = 0.50;   // side-by-side separation (x, in shirtWidth units)
+  const DY_OUT = 0.70, DY_IN = 0.62;    // stacked separation (y, in TARGET_HEIGHT units)
   function frameCameraToContent() {
-    const contentW = (shirtWidth * DX_OUT + shirtWidth / 2) * 2, contentH = TARGET_HEIGHT;
     const vFov = camera.fov * Math.PI / 180;
+    let contentW, contentH;
+    if (stacked) {
+      contentW = shirtWidth * 1.06;
+      contentH = TARGET_HEIGHT * (2 * DY_OUT + 1) + 0.30;   // stack span + room for the labels
+    } else {
+      contentW = (shirtWidth * DX_OUT + shirtWidth / 2) * 2;
+      contentH = TARGET_HEIGHT;
+    }
     const distH = (contentH / 2) / Math.tan(vFov / 2);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
     const distW = (contentW / 2) / Math.tan(hFov / 2);
@@ -190,9 +211,15 @@ function init(app) {
     const dist = fitDist * (1 - zoomT * 0.55);
     camera.position.set(0, 0, dist);
     camera.lookAt(camTarget);
-    const dx = shirtWidth * (DX_OUT - (DX_OUT - DX_IN) * zoomT);
-    if (groups[0]) groups[0].position.x = -dx;
-    if (groups[1]) groups[1].position.x = dx;
+    if (stacked) {
+      const dy = TARGET_HEIGHT * (DY_OUT - (DY_OUT - DY_IN) * zoomT);
+      if (groups[0]) { groups[0].position.x = 0; groups[0].userData.baseY = dy; }
+      if (groups[1]) { groups[1].position.x = 0; groups[1].userData.baseY = -dy; }
+    } else {
+      const dx = shirtWidth * (DX_OUT - (DX_OUT - DX_IN) * zoomT);
+      if (groups[0]) { groups[0].position.x = -dx; groups[0].userData.baseY = 0; }
+      if (groups[1]) { groups[1].position.x = dx; groups[1].userData.baseY = 0; }
+    }
   }
   zoomInput.addEventListener('input', e => { zoomT = (+e.target.value) / 100; applyZoom(); });
 
@@ -218,7 +245,7 @@ function init(app) {
   const _v = new THREE.Vector3();
   function placeLabel(el, group) {
     if (!group) return;
-    _v.set(group.position.x, -TARGET_HEIGHT / 2 - 0.12, 0).project(camera);
+    _v.set(group.position.x, group.position.y - TARGET_HEIGHT / 2 - 0.12, 0).project(camera);
     el.style.left = ((_v.x * 0.5 + 0.5) * app.clientWidth) + 'px';
     el.style.top = ((-_v.y * 0.5 + 0.5) * app.clientHeight) + 'px';
   }
@@ -226,9 +253,10 @@ function init(app) {
   // ---------- sizing ----------
   function resize() {
     const w = app.clientWidth || 600, h = app.clientHeight || 400;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDPR));
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
+    stacked = (w / h) < 0.95;   // portrait / narrow canvas -> stack the two shirts instead of side-by-side
     frameCameraToContent();
   }
   if (window.ResizeObserver) new ResizeObserver(resize).observe(app);
@@ -258,7 +286,7 @@ function init(app) {
       g.rotation.y = spinCur.y;
       g.rotation.x = spinCur.x;
       g.rotation.z = Math.sin(wv * 0.9) * 0.011;
-      g.position.y = Math.sin(wv * 0.7 + 1.0) * 0.015;
+      g.position.y = (g.userData.baseY || 0) + Math.sin(wv * 0.7 + 1.0) * 0.015;   // keep the stacked offset, add the wind bob
     }
     placeLabel(lblA, groups[0]);
     placeLabel(lblB, groups[1]);
