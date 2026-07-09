@@ -2,7 +2,7 @@
   if(window.txMatrix)return; window.txMatrix=1;
   var o=document.createElement('div');
   o.id='tx-mx-bg';
-  o.style.cssText='position:fixed;top:0;left:50%;transform:translateX(-50%);width:min(1340px,calc(100vw - 40px));height:100vh;pointer-events:none;z-index:1;overflow:hidden;opacity:0.5';
+  o.style.cssText='position:fixed;top:0;left:50%;transform:translateX(-50%);width:min(1340px,calc(100vw - 40px));height:100lvh;pointer-events:none;z-index:1;overflow:hidden;opacity:0.5';
   var c=document.createElement('canvas');
   c.style.cssText='display:block;width:100%;height:100%;filter:blur(0.6px)';
   o.appendChild(c);
@@ -138,6 +138,16 @@
     requestAnimationFrame(tick);
   }
   function go(){setup();requestAnimationFrame(tick);}
-  var T;addEventListener('resize',function(){clearTimeout(T);T=setTimeout(go,200);});
+  // Mobile browsers fire `resize` every time the URL bar collapses during a scroll.
+  // setup() re-seeds every drop/grid cell, so re-running it on those events made the
+  // whole matrix visibly re-shuffle on every scroll. Only rebuild on a real size change.
+  var T,lastW=0,lastH=0;
+  addEventListener('resize',function(){
+    var w=innerWidth,h=innerHeight;
+    if(w===lastW&&Math.abs(h-lastH)<150)return;   // URL-bar collapse, not a real resize
+    lastW=w;lastH=h;
+    clearTimeout(T);T=setTimeout(go,200);
+  });
+  lastW=innerWidth;lastH=innerHeight;
   go();
 })();

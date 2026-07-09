@@ -23,9 +23,12 @@ function init(app) {
   .txc-label .txc-sub{display:block;margin-top:2px;font-weight:400;font-size:.72em;color:rgba(243,239,231,.55)}
   .txc-label.txc-seam{color:#1D9E75}
   .txc-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);font-family:'Inter',system-ui,sans-serif;font-size:12px;color:rgba(243,239,231,.5);pointer-events:none;opacity:0;transition:opacity .5s}
-  .txc-panel{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(243,239,231,.18);opacity:0;transition:opacity .5s}
+  .txc-panel{position:absolute;right:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 9px;border-radius:999px;background:rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(243,239,231,.18);opacity:0;transition:opacity .5s}
   .txc-panel span{font-size:12px;color:rgba(243,239,231,.55);user-select:none}
-  .txc-range{-webkit-appearance:none;appearance:none;width:clamp(110px,18vw,200px);height:4px;border-radius:4px;background:rgba(243,239,231,.18);outline:none;cursor:pointer}
+  /* rotate rather than writing-mode/slider-vertical: the native vertical range is inconsistent
+     across Chrome <122 and Safari, a rotated horizontal track behaves identically everywhere */
+  .txc-rangewrap{position:relative;width:16px;height:clamp(110px,26vh,190px)}
+  .txc-range{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-90deg);-webkit-appearance:none;appearance:none;width:clamp(110px,26vh,190px);height:4px;border-radius:4px;background:rgba(243,239,231,.18);outline:none;cursor:pointer;touch-action:none}
   .txc-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:#1D9E75;border:2px solid #fff;cursor:pointer}
   .txc-range::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#1D9E75;border:2px solid #fff;cursor:pointer}
   .txc-load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Inter',system-ui,sans-serif;font-size:13px;color:rgba(243,239,231,.5);letter-spacing:.04em;transition:opacity .5s;pointer-events:none}
@@ -38,7 +41,7 @@ function init(app) {
   const lblB = mk('txc-label txc-seam', 'Seamless', 'Textyl');
   const hint = document.createElement('div'); hint.className = 'txc-hint'; hint.textContent = 'Drag to rotate'; app.appendChild(hint);
   const panel = document.createElement('div'); panel.className = 'txc-panel';
-  panel.innerHTML = '<span>–</span><input type="range" class="txc-range" min="0" max="100" value="0" aria-label="Zoom"><span>+</span>';
+  panel.innerHTML = '<span>+</span><div class="txc-rangewrap"><input type="range" class="txc-range" min="0" max="100" value="0" aria-label="Zoom"></div><span>–</span>';
   app.appendChild(panel);
   const zoomInput = panel.querySelector('.txc-range');
   const loadEl = document.createElement('div'); loadEl.className = 'txc-load'; loadEl.textContent = 'Loading…'; app.appendChild(loadEl);
