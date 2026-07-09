@@ -17,7 +17,7 @@ function boot() {
   document.head.appendChild(st);
   host.innerHTML = DOM;
   let VW = host.clientWidth || 800, VH = host.clientHeight || 600;
-  let inView = true;
+  let inView = false;   // IO sets this. MUST start false: on the site slideActive() is always true, so a `true` default makes the touch autoplay fire at page load while the section is still below the fold, and it finishes before the user ever sees it.
   const slideEl = host.closest('section[data-label]');           // in the pitch deck this is the slide <section>; null on the standalone site
   const slideActive = () => !slideEl || slideEl.hasAttribute("data-deck-active");  // deck marks the live slide; site = always active
   let _wasLive = false;

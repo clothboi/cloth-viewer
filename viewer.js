@@ -292,5 +292,37 @@ function init(app) {
     placeLabel(lblB, groups[1]);
     renderer.render(scene, camera);
   }
+  // ---------- temporary on-device diagnostic: load the page with ?txdebug=1 ----------
+  if (location.search.indexOf('txdebug') > -1) {
+    const dbg = document.createElement('div');
+    dbg.style.cssText = 'position:absolute;left:0;top:0;z-index:99;padding:8px 10px;background:rgba(0,0,0,.85);color:#3f6;font:11px/1.45 ui-monospace,Menlo,monospace;white-space:pre;pointer-events:none';
+    app.appendChild(dbg);
+    let gpu = 'n/a';
+    try {
+      const gl = renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      if (ext) gpu = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+    } catch (_) {}
+    const _b = new THREE.Box3(), _sz = new THREE.Vector3();
+    const _fr = new THREE.Frustum(), _mx = new THREE.Matrix4();
+    setInterval(() => {
+      _mx.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      _fr.setFromProjectionMatrix(_mx);
+      const L = [
+        'app   ' + app.clientWidth + ' x ' + app.clientHeight + '  dpr ' + renderer.getPixelRatio().toFixed(2),
+        'cam   aspect ' + camera.aspect.toFixed(3) + '  z ' + camera.position.z.toFixed(2) + '  far ' + camera.far,
+        'fit   fitDist ' + fitDist.toFixed(2) + '  stacked ' + stacked + '  shirtW ' + shirtWidth.toFixed(3),
+        'draw  calls ' + renderer.info.render.calls + '  tris ' + renderer.info.render.triangles,
+        'vis   visible ' + visible + '  groups ' + groups.length,
+        'gpu   ' + String(gpu).slice(0, 38)
+      ];
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        _b.setFromObject(g); _b.getSize(_sz);
+        L.push('g' + i + '    y ' + g.position.y.toFixed(2) + '  size ' + _sz.x.toFixed(2) + 'x' + _sz.y.toFixed(2) + '  inFrustum ' + _fr.intersectsBox(_b));
+      }
+      dbg.textContent = L.join('\n');
+    }, 500);
+  }
   tick();
 }
