@@ -293,6 +293,9 @@ function init(app) {
   const TAU = Math.PI * 2;
   // horizontal wheel: ridges sit on a drum, dragging moves them 1:1 under the finger, a flick keeps spinning
   let wheelDrag = false, wheelX = 0, wheelT = 0, wheelVel = 0;
+  // speed limits (radians / second): the shirt never turns faster than MAX_SPIN, a flick starts at most MAX_FLING,
+  // and the shirt never trails the wheel by more than MAX_LAG, so it can't keep spinning on after you let go
+  const MAX_SPIN = 5, MAX_FLING = 3, MAX_LAG = 0.9;
   const drumR = () => dial.clientWidth * 0.42;
   dial.addEventListener('pointerdown', (e) => {
     wheelDrag = true; wheelVel = 0; wheelX = e.clientX; wheelT = performance.now();
@@ -301,8 +304,9 @@ function init(app) {
   dial.addEventListener('pointermove', (e) => {
     if (!wheelDrag) return;
     const now = performance.now(), da = (e.clientX - wheelX) / drumR();
-    spin.y += da; spinCur.y += da;                                     // the wheel follows the finger exactly
-    wheelVel = 0.8 * wheelVel + 0.2 * (da / Math.max(1, now - wheelT) * 16.7);
+    spin.y += da;                                                      // target follows the finger; tick() eases the shirt to it at a capped speed
+    wheelVel = 0.8 * wheelVel + 0.2 * (da / Math.max(1, now - wheelT) * 1000);   // rad / s
+    wheelVel = Math.max(-MAX_FLING, Math.min(MAX_FLING, wheelVel));
     wheelX = e.clientX; wheelT = now; e.preventDefault();
   });
   const wheelUp = () => { if (!wheelDrag) return; wheelDrag = false; dial.classList.remove('txc-press'); if (performance.now() - wheelT > 80) wheelVel = 0; };
@@ -402,8 +406,11 @@ function init(app) {
     windT += dt;
     windA.value = windT;
     windB.value = windT + 7.3;                 // phase-offset shirt 2 so the pair doesn't sway in sync
-    if (!wheelDrag && Math.abs(wheelVel) > 1e-4) { spin.y += wheelVel; spinCur.y += wheelVel; wheelVel *= Math.pow(0.93, dt * 60); }
-    spinCur.y += (spin.y - spinCur.y) * Math.min(1, dt * 8);
+    if (!wheelDrag && Math.abs(wheelVel) > 0.01) { spin.y += wheelVel * dt; wheelVel *= Math.pow(0.9, dt * 60); } else if (!wheelDrag) wheelVel = 0;
+    { let gap = spin.y - spinCur.y;
+      if (Math.abs(gap) > MAX_LAG) { spin.y = spinCur.y + Math.sign(gap) * MAX_LAG; gap = spin.y - spinCur.y; }
+      const step = gap * Math.min(1, dt * 10), lim = MAX_SPIN * dt;
+      spinCur.y += Math.max(-lim, Math.min(lim, step)); }
     spinCur.x += (spin.x - spinCur.x) * Math.min(1, dt * 8);
     zoomCur += (zoomT - zoomCur) * Math.min(1, dt * 7);
     windAmp.value = 1 - 0.9 * zoomCur;
