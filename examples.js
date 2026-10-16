@@ -206,7 +206,7 @@
       var b = el('button', 'txe-fab'); b.type = 'button';
       b.innerHTML = '<span class="sw" style="background-image:url(\'' + src(p, 'thumb') + '\')"></span>' + p.name + '<small>' + p.tile.toFixed(1) + ' mm tile</small>';
       b.setAttribute('aria-pressed', 'false'); b.setAttribute('aria-label', 'Show ' + p.name);
-      b.addEventListener('click', function () { setPick(i); });
+      b.addEventListener('click', function () { setPick(i); jumpToViewer(); });
       pick.appendChild(b); return b;
     });
 
@@ -218,6 +218,16 @@
       root.appendChild(top); root.appendChild(pick);
     }
     host.innerHTML = ''; host.classList.add('txe-on'); host.appendChild(root);
+
+    // mobile: the picker sits below the fold, so after choosing a fabric bring the wipe viewer back into view
+    function jumpToViewer() {
+      if (root.classList.contains('txe-deck') || !window.matchMedia('(max-width:760px)').matches) return;
+      var nav = document.querySelector('.tx-nav');
+      var headH = nav ? Math.max(0, nav.getBoundingClientRect().bottom) : 90;
+      var r = out.getBoundingClientRect();
+      var y = window.pageYOffset + r.top - headH - 12;
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    }
 
     // ---------- state ----------
     var cur = 0, curMap = 'normal', split = 50;
