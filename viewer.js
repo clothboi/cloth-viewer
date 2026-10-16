@@ -22,6 +22,7 @@ function init(app) {
   const FABRIC_ZOOM = 4;
   const TILE_MM = 18.81 * FABRIC_ZOOM, PHOTO_MM = 94.6 * FABRIC_ZOOM;
   const SEP = 6;
+  const NORMAL_STRENGTH = 2.5;   // Textyl normal map strength (was 0.5)
   if (getComputedStyle(app).position === 'static') app.style.position = 'relative';
   const D = app.dataset;
   const isTouch = window.matchMedia && window.matchMedia('(hover: none), (pointer: coarse)').matches;
@@ -191,7 +192,7 @@ function init(app) {
         const isFabric = n.includes('fabric') || n.includes('gingham');
         if (isFabric) {
           m.transparent = false; m.depthWrite = true; m.alphaTest = 0;
-          if (m.normalMap) m.normalScale.set(0.5, 0.5);
+          if (m.normalMap) m.normalScale.set(NORMAL_STRENGTH, NORMAL_STRENGTH);
           if (m.map) { m.map.anisotropy = 8; m.map.needsUpdate = true; }
         }
         setupMaterial(m, isFabric, windRef);
