@@ -10,6 +10,8 @@
                [physics]   [map strip]
                [fabric picker, 6 across]
      mobile    photo, arrow, output, map strip, physics, picker (3 across)
+     deck      host data-layout="deck": [photo] -> [output] | [physics]
+               [map strip]             | [picker 2x3]
 
    The output panel is a wipe: base colour on the left, the chosen map on the
    right, one hard seam. A hard seam (not a cross-fade) is what proves every map
@@ -106,15 +108,32 @@
     '.txe-fab[aria-pressed="true"] .sw{border-color:var(--accent);box-shadow:0 0 0 2px rgba(95,196,201,.35),0 10px 24px -10px rgba(0,0,0,.7)}',
     '.txe-fab:focus-visible{outline:none}.txe-fab:focus-visible .sw{outline:2px solid var(--ink);outline-offset:2px}',
     '@media (max-width:760px){',
-    '  .txe-top{grid-template-columns:minmax(0,1fr);grid-template-areas:"photo" "arrow" "out" "maps" "phys";row-gap:12px}',
-    '  .txe-phys{grid-template-columns:minmax(0,1fr);grid-template-areas:"h" "kv" "bars" "note";padding:16px 16px 14px}',
-    '  .txe-bars{grid-template-columns:minmax(0,1fr)}',
-    '  .txe-maps{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 10px}',
-    '  .txe-arrow svg{transform:rotate(90deg);width:26px;height:26px}',
-    '  .txe-maps{gap:6px}.txe-map{font-size:10px}',
-    '  .txe-pick{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}',
-    '  .txe-bar{grid-template-columns:86px 1fr 24px}',
+    '  .txe:not(.txe-deck) .txe-top{grid-template-columns:minmax(0,1fr);grid-template-areas:"photo" "arrow" "out" "maps" "phys";row-gap:12px}',
+    '  .txe:not(.txe-deck) .txe-phys{grid-template-columns:minmax(0,1fr);grid-template-areas:"h" "kv" "bars" "note";padding:16px 16px 14px}',
+    '  .txe:not(.txe-deck) .txe-bars{grid-template-columns:minmax(0,1fr)}',
+    '  .txe:not(.txe-deck) .txe-maps{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 10px}',
+    '  .txe:not(.txe-deck) .txe-arrow svg{transform:rotate(90deg);width:26px;height:26px}',
+    '  .txe:not(.txe-deck) .txe-maps{gap:6px}.txe:not(.txe-deck) .txe-map{font-size:10px}',
+    '  .txe:not(.txe-deck) .txe-pick{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}',
+    '  .txe:not(.txe-deck) .txe-bar{grid-template-columns:86px 1fr 24px}',
     '}',
+    /* deck layout: host data-layout="deck" (pitch deck slide, fixed 1920x1080 canvas) */
+    '.txe.txe-deck{max-width:none;margin:0;display:grid;grid-template-columns:minmax(0,1fr) 430px;column-gap:34px;align-items:center}',
+    '.txe-deck .txe-top{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr);grid-template-areas:"photo arrow out" "maps maps maps";row-gap:20px}',
+    '.txe-deck .txe-side{display:flex;flex-direction:column;gap:22px;min-width:0}',
+    '.txe-deck .txe-tag{font-size:13px;padding:7px 13px}',
+    '.txe-deck .txe-map{font-size:15px}.txe-deck .txe-map .sw{margin-bottom:8px}',
+    '.txe-deck .txe-phys{grid-template-columns:minmax(0,1fr);grid-template-areas:"h" "kv" "bars" "note";padding:22px 24px 18px;column-gap:0}',
+    '.txe-deck .txe-phys-h{margin-bottom:18px}.txe-deck .txe-phys-t,.txe-deck .txe-pill{font-size:13px}',
+    '.txe-deck .txe-kv{gap:10px 18px;margin-bottom:18px}.txe-deck .txe-kv span{font-size:14px}.txe-deck .txe-kv b{font-size:23px}.txe-deck .txe-kv b small{font-size:13px}',
+    '.txe-deck .txe-bars{grid-template-columns:minmax(0,1fr);gap:10px;padding:0}',
+    '.txe-deck .txe-bar{grid-template-columns:118px 1fr 30px;font-size:15px}.txe-deck .txe-bar i{height:5px}',
+    '.txe-deck .txe-note{font-size:12.5px;margin-top:16px}',
+    '.txe-deck .txe-pick{margin:0;padding:0;border:0;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}',
+    '.txe-deck .txe-pick-h{font-size:13px;margin-bottom:2px}',
+    '.txe-deck .txe-fab{display:grid;grid-template-columns:50px minmax(0,1fr);column-gap:10px;align-items:center;font-size:14px;line-height:1.25}',
+    '.txe-deck .txe-fab .sw{grid-row:1/3;width:50px;margin:0;border-radius:10px}.txe-deck .txe-fab small{font-size:12px;align-self:start}',
+    '.txe-deck .txe-fab:hover .sw{transform:none}',
     '@media (prefers-reduced-motion:reduce){.txe *{transition:none!important}}'
   ].join('\n');
 
@@ -123,7 +142,8 @@
 
   function boot() {
     var host = document.getElementById('tx-examples') || document.querySelector('.tx-examples');
-    if (!host || host.dataset.txeReady) return;
+    if (!host) return false;
+    if (host.dataset.txeReady) return true;
     host.dataset.txeReady = '1';
 
     var style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style);
@@ -190,7 +210,13 @@
       pick.appendChild(b); return b;
     });
 
-    root.appendChild(top); root.appendChild(pick);
+    if (host.getAttribute('data-layout') === 'deck') {
+      root.classList.add('txe-deck');
+      var side = el('div', 'txe-side'); side.appendChild(phys); side.appendChild(pick);
+      root.appendChild(top); root.appendChild(side);
+    } else {
+      root.appendChild(top); root.appendChild(pick);
+    }
     host.innerHTML = ''; host.classList.add('txe-on'); host.appendChild(root);
 
     // ---------- state ----------
@@ -256,8 +282,17 @@
     // warm the cache for the other fabrics' first images once the page is idle
     var idle = window.requestIdleCallback || function (f) { setTimeout(f, 1500); };
     idle(function () { PICKS.forEach(function (p, i) { if (i) { new Image().src = src(p, 'input'); new Image().src = src(p, 'base'); } }); });
+    return true;
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
+  // The host can appear after this script runs (the pitch deck mounts its slides late),
+  // so keep watching for it for a while.
+  function start() {
+    if (boot()) return;
+    var mo = new MutationObserver(function () { if (boot()) mo.disconnect(); });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(function () { mo.disconnect(); }, 30000);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();
