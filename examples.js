@@ -118,9 +118,11 @@
     '  .txe:not(.txe-deck) .txe-bar{grid-template-columns:86px 1fr 24px}',
     '}',
     /* deck layout: host data-layout="deck" (pitch deck slide, fixed 1920x1080 canvas) */
-    '.txe.txe-deck{max-width:none;margin:0;display:grid;grid-template-columns:minmax(0,1fr) 430px;column-gap:34px;align-items:center}',
-    '.txe-deck .txe-top{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr);grid-template-areas:"photo arrow out" "maps maps maps";row-gap:20px}',
-    '.txe-deck .txe-side{display:flex;flex-direction:column;gap:22px;min-width:0}',
+    '#tx-examples[data-layout="deck"]{height:100%}',
+    '.txe.txe-deck{max-width:none;margin:0;height:100%;display:grid;grid-template-columns:minmax(0,1fr) 430px;column-gap:80px;align-items:stretch}',
+    '.txe-deck .txe-top{align-self:stretch;align-content:space-between;grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr);grid-template-areas:"photo arrow out" "maps maps maps";row-gap:20px}',
+    '.txe-deck .txe-side{display:flex;flex-direction:column;justify-content:space-between;gap:22px;min-width:0}',
+    '.txe-deck .txe-side{position:relative}.txe-deck .txe-side::before{content:"";position:absolute;left:-40.5px;top:0;bottom:0;width:1px;background:rgba(243,239,231,.14)}',
     '.txe-deck .txe-tag{font-size:13px;padding:7px 13px}',
     '.txe-deck .txe-map{font-size:15px}.txe-deck .txe-map .sw{margin-bottom:8px}',
     '.txe-deck .txe-phys{grid-template-columns:minmax(0,1fr);grid-template-areas:"h" "kv" "bars" "note";padding:22px 24px 18px;column-gap:0}',
@@ -133,7 +135,7 @@
     '.txe-deck .txe-pick-h{font-size:13px;margin-bottom:2px}',
     '.txe-deck .txe-fab{display:grid;grid-template-columns:50px minmax(0,1fr);column-gap:10px;align-items:center;font-size:14px;line-height:1.25}',
     '.txe-deck .txe-fab .sw{grid-row:1/3;width:50px;margin:0;border-radius:10px}.txe-deck .txe-fab small{font-size:12px;align-self:start}',
-    '.txe-deck .txe-fab:hover .sw{transform:none}',
+    '.txe-deck .txe-fab:hover .sw{transform:translateY(-2px)}',
     '@media (prefers-reduced-motion:reduce){.txe *{transition:none!important}}'
   ].join('\n');
 
