@@ -22,7 +22,8 @@ function init(app) {
   const FABRIC_ZOOM = 4;
   const TILE_MM = 18.81 * FABRIC_ZOOM, PHOTO_MM = 94.6 * FABRIC_ZOOM;
   const SEP = 6;
-  const NORMAL_STRENGTH = 2.5;   // Textyl normal map strength (was 0.5)
+  const NORMAL_STRENGTH = 1.5;   // Textyl normal map strength (tuned with the test sliders)
+  const AO_STRENGTH = 0.5;       // Textyl AO baked into the base colour: 0 = off, 1 = full. Normalised to the AO's mean, so it adds contrast without darkening overall
   if (getComputedStyle(app).position === 'static') app.style.position = 'relative';
   const D = app.dataset;
   const isTouch = window.matchMedia && window.matchMedia('(hover: none), (pointer: coarse)').matches;
@@ -192,7 +193,9 @@ function init(app) {
         const isFabric = n.includes('fabric') || n.includes('gingham');
         if (isFabric) {
           m.transparent = false; m.depthWrite = true; m.alphaTest = 0;
-          if (m.normalMap) m.normalScale.set(NORMAL_STRENGTH, NORMAL_STRENGTH);
+          // keep the loader's sign on Y: GLTFLoader sets normalScale.y = -1 on meshes without tangents (glTF UVs run top-down);
+          // overwriting it with a positive value flips the green channel, so shadows land on the top edge of the threads
+          if (m.normalMap) m.normalScale.set(NORMAL_STRENGTH, NORMAL_STRENGTH * (m.normalScale.y < 0 ? -1 : 1));
           if (m.map) { m.map.anisotropy = 8; m.map.needsUpdate = true; }
         }
         setupMaterial(m, isFabric, windRef);
@@ -216,7 +219,7 @@ function init(app) {
           [m.map, m.normalMap, m.roughnessMap].forEach(t => { if (t) { t.repeat.set(1 / cfg.tileMM, 1 / cfg.tileMM); t.needsUpdate = true; } });
         }
         if (cfg.normal && m.normalMap) { m.normalMap.image = cfg.normal; m.normalMap.needsUpdate = true; }
-        if (cfg.rough && m.roughnessMap) { m.roughnessMap.image = cfg.rough; m.roughnessMap.needsUpdate = true; m.roughness = 1.0; }
+        if (cfg.rough && m.roughnessMap) { m.roughnessMap.image = cfg.rough; m.roughnessMap.needsUpdate = true; m.roughness = cfg.roughness != null ? cfg.roughness : 1.0; }
         if (cfg.sheen != null) {
           m.sheen = cfg.sheen;
           m.sheenColor = new THREE.Color(cfg.sheenColor != null ? cfg.sheenColor : 0xffffff);
@@ -230,16 +233,47 @@ function init(app) {
   // ---------- load assets ----------
   const gltf = new GLTFLoader();
   function loadGLB(url) { return new Promise((res, rej) => gltf.load(url, g => res(g.scene), undefined, rej)); }
+  // The scene is lit mostly by direct lights, which three.js aoMap ignores, so the AO is multiplied into the
+  // base colour instead (crevices darker, raised yarn lighter, average brightness unchanged).
+  function bakeAO(base, ao, k) {
+    const w = base.naturalWidth || base.width, h = base.naturalHeight || base.height;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(ao, 0, 0, w, h); const a = x.getImageData(0, 0, w, h).data;
+    x.drawImage(base, 0, 0, w, h); const img = x.getImageData(0, 0, w, h), d = img.data;
+    let sum = 0; for (let i = 0; i < a.length; i += 4) sum += a[i]; const mean = sum / (a.length / 4) || 1;
+    for (let i = 0; i < d.length; i += 4) {
+      const f = 1 + k * (a[i] / mean - 1);
+      d[i] = Math.min(255, d[i] * f); d[i + 1] = Math.min(255, d[i + 1] * f); d[i + 2] = Math.min(255, d[i + 2] * f);
+    }
+    x.putImageData(img, 0, 0);
+    return c;
+  }
   function loadImg(url) { return new Promise((res, rej) => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
 
   Promise.all([
     loadGLB(ASSET('default.glb')), loadGLB(ASSET('seamless.glb')),
     loadImg(ASSET('r4_052498_input.webp')), loadImg(ASSET('r4_052498_base.webp')),
-    loadImg(ASSET('r4_052498_normal.webp')), loadImg(ASSET('r4_052498_rough.webp'))
-  ]).then(([a, b, defBase, seamBase, seamNormal, seamRough]) => {
+    loadImg(ASSET('r4_052498_normal.webp')), loadImg(ASSET('r4_052498_rough.webp')), loadImg(ASSET('r4_052498_ao.webp'))
+  ]).then(([a, b, defBase, seamBase0, seamNormal, seamRough, seamAO]) => {
+    let seamBase = seamBase0;
+    try { if (AO_STRENGTH > 0) seamBase = bakeAO(seamBase0, seamAO, AO_STRENGTH); } catch (e) { seamBase = seamBase0; }   // canvas blocked: fall back to the plain base
     const gA = makeShirt(a, windA), gB = makeShirt(b, windB);
     retexture(a, { base: defBase, tileMM: PHOTO_MM });                                            // Default <- raw input
-    retexture(b, { base: seamBase, normal: seamNormal, rough: seamRough, tileMM: TILE_MM, sheen: 0.25, sheenRoughness: 0.8 }); // Seamless
+    retexture(b, { base: seamBase, normal: seamNormal, rough: seamRough, tileMM: TILE_MM, roughness: 0.9, sheen: 0.45, sheenRoughness: 0.3 }); // Seamless
+    // tuning hook for viewer-test.html sliders (harmless on the live site: nothing calls it)
+    const tyMats = [];
+    b.traverse(o => { if (!o.isMesh || !o.material) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { const n = (m.name || '').toLowerCase(); if ((n.includes('fabric') || n.includes('gingham')) && tyMats.indexOf(m) < 0) tyMats.push(m); }); });
+    const tune = { normal: NORMAL_STRENGTH, ao: AO_STRENGTH, rough: 0.9, sheen: 0.45, sheenRough: 0.3 };
+    window.txViewerTune = {
+      get: () => Object.assign({}, tune),
+      normal(v) { tune.normal = v; tyMats.forEach(m => { if (m.normalMap) m.normalScale.set(v, v * (m.normalScale.y < 0 ? -1 : 1)); }); },
+      ao(v) { tune.ao = v; let c = seamBase0; try { if (v > 0) c = bakeAO(seamBase0, seamAO, v); } catch (e) {} tyMats.forEach(m => { if (m.map) { m.map.image = c; m.map.needsUpdate = true; } }); },
+      rough(v) { tune.rough = v; tyMats.forEach(m => { m.roughness = v; }); },
+      sheen(v) { tune.sheen = v; tyMats.forEach(m => { m.sheen = v; }); },
+      sheenRough(v) { tune.sheenRough = v; tyMats.forEach(m => { m.sheenRoughness = v; }); }
+    };
+    window.dispatchEvent(new Event('txviewer-ready'));
     gA.position.x = -SEP; gB.position.x = SEP;                      // far apart: each window's camera sees only its own shirt
     scene.add(gA, gB);
     groups = [gA, gB];
